@@ -173,8 +173,9 @@
 
 
 ### M6 – Không khí theo thời điểm trong ngày
-- [x] Đồng bộ một lớp ánh sáng môi trường nhẹ với ba khung thời gian sáng/trưa/chiều đã có.
+- [x] Đồng bộ ánh sáng bằng đúng dayPart của thẻ nhịp sống (sáng/trưa/chiều), không tự chia mốc thời gian riêng.
 - [x] Giữ lớp ánh sáng không nhận pointer event và không che nhân vật/NPC/điều khiển.
+- [x] Thêm regression test bảo đảm ba dayPart luôn ánh xạ đúng preset ánh sáng.
 - [ ] Kiểm tra thủ công ba khung thời gian để bảo đảm chữ, vật thể và nhân vật vẫn rõ.
 
 ## M6 – Chất lượng hội thoại Map 1

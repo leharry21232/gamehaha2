@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Fixed Map 1 lighting to use the same morning/noon/afternoon phase boundaries as the neighborhood event card; added a regression test for all three mappings.
 - Map 1 audit: removed the shortcut that closed the neighborhood from anywhere; the player must return to the bánh tráng cart to leave the map and resume preparation.
 - Rebalanced large economy windfalls: boss reward 500k→120k, Flow masterpiece x5→x2, Tarot/Viral multipliers x3→x1.5, and reduced lottery, VIP tips, raid and cash-pickup payouts. Cooking inputs, ingredient prices, save data and progression requirements remain unchanged.
 - Expanded Map 1 conversations with first-visit and return-visit dialogue plus morning/noon/afternoon context at nine non-cart stops; clarified the grocery shopkeeper as a separate character from Cô Năm. Visit counts are session-only and narrative-only.

@@ -5,6 +5,17 @@
 
 export type TimeOfDayLighting = 'morning' | 'noon' | 'afternoon' | 'evening';
 
+import type { NeighborhoodDayPart } from '../world';
+
+/** Keep map lighting on the exact same three game-time phases as neighborhood ambience. */
+export function getLightingForDayPart(dayPart: NeighborhoodDayPart): TimeOfDayLighting {
+  switch (dayPart) {
+    case 'MORNING': return 'morning';
+    case 'NOON': return 'noon';
+    case 'AFTERNOON': return 'afternoon';
+  }
+}
+
 /** Bảng màu giới hạn (~24 màu ấm Sài Gòn) dùng chung cho nhà, vỉa hè, đường, xe cộ và NPC */
 export const SAIGON_PALETTE = {
   // Bầu trời & ánh sáng

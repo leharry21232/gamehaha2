@@ -4,6 +4,7 @@ import { GameEngine } from './game/engine';
 import { TesterPanel } from './TesterPanel';
 import { MobileGameHub } from './MobileGameHub';
 import { NeighborhoodMapView } from './game/neighborhood/NeighborhoodMapView';
+import { getLightingForDayPart } from './game/neighborhood/config';
 import { BASE_MARKET_PRICES, ELEMENT_META, RAW_INGREDIENTS } from './game/orders';
 import { DECORATIONS, getUnlockedSkills } from './game/progression';
 import { findNearbyWorldLocation, getNeighborhoodEvent, getNeighborhoodDialogue, isNeighborhoodDialogueLocationId, getVendorLocation, CURIOUS_CART_VISITOR_EVENT, getNeighborhoodHelpQuestAction, NEIGHBORHOOD_HELP_QUEST, getNeighborhoodParcelQuestAction, getNeighborhoodQuestFollowUpDialogue, NEIGHBORHOOD_PARCEL_QUEST, getWorldMovementDelta, moveWorldPlayer, type NeighborhoodHelpQuestStatus, type NeighborhoodParcelQuestStatus, type WorldInteractable } from './game/world';
@@ -778,9 +779,7 @@ export default function App() {
 
   const nearbyWorldLocation = findNearbyWorldLocation(worldPlayer.x, worldPlayer.y);
   const neighborhoodEvent = getNeighborhoodEvent(hud.day, hud.dayTimeLeft, hud.dayDuration);
-  const worldElapsedRatio = hud.dayDuration > 0 ? Math.min(1, Math.max(0, 1 - hud.dayTimeLeft / hud.dayDuration)) : 0.5;
-  const worldLighting = worldElapsedRatio < 0.25 ? 'morning' : worldElapsedRatio < 0.5 ? 'noon' : worldElapsedRatio < 0.75 ? 'afternoon' : 'evening';
-  const worldLightingLabel = worldLighting === 'morning' ? 'BUỔI SÁNG' : worldLighting === 'noon' ? 'BUỔI TRƯA' : worldLighting === 'afternoon' ? 'BUỔI CHIỀU' : 'BUỔI TỐI';
+  const worldLighting = getLightingForDayPart(neighborhoodEvent.dayPart);
   const getWorldDialogue = (location: NonNullable<typeof nearbyWorldLocation>) => {
     if (!isNeighborhoodDialogueLocationId(location.id)) return location.interactionText;
     const visitCount = neighborhoodVisitCounts[location.id] ?? 0;
