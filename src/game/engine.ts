@@ -4,6 +4,7 @@ import { addProgress, getDecorationAttraction, getUnlockedSkills, getIngredientU
 import { DayManager } from './dayManager';
 import { claimStoryMissionReward, getStoryMissionSnapshot, loadCompletedMissionIds, saveCompletedMissionIds } from './missions';
 import { createInitialRicePaper, createInitialRollPolygon, splitPolygonBySegment } from './geometry';
+import { buildCutGuides, findSnapCutGuide, type CutGuide } from './cutGuides';
 import { Haptics } from './haptics';
 import {
   computePrepLayout,
@@ -99,6 +100,9 @@ import type {
   WireColorId,
   WuxiaCombatState,
 } from './types';
+
+const CUT_SNAP_RADIUS = 36;
+const ENABLE_GUIDED_CUT_ON_COMPACT = true;
 
 function emptyToppings(): Record<ToppingId, number> {
   return {
@@ -552,12 +556,14 @@ export class GameEngine {
   private isSwiping = false;
   private activeCutAnchor: Point2D | null = null;
   private lastSwipePoint: Point2D | null = null;
+  private cutGuideDone: boolean[] = [];
 
   // Bánh Tráng Cuốn rolling state
   private rollProgress = 0;
   private isRollingDrag = false;
   private lastRollDragY = 0;
   private rollSoundCooldown = 0;
+  private hasRolledThisSession = false;
 
   private addedToppings: Record<ToppingId, number> = emptyToppings();
   private toppingHistory: ToppingId[] = [];
@@ -664,6 +670,8 @@ export class GameEngine {
       pointerDragRoad: boolean;
       parryOrigin: Point2D | null;
       lastBossAngle: number | null;
+      rollStartInsideMat?: boolean;
+      rollAddedDist?: number;
     }
   >();
   private limeTouchId: number | null = null;
@@ -1098,6 +1106,8 @@ export class GameEngine {
     this.dayOrdersCompleted = 0;
     this.dayPnl = freshDayPnl(1);
     this.endOfDayPending = false;
+    this.hasRolledThisSession = false;
+    this.cutGuideDone = [];
 
     this.order = null;
     this.waitingCustomers = [];
@@ -2943,6 +2953,7 @@ export class GameEngine {
     this.isSwiping = false;
     this.activeCutAnchor = null;
     this.lastSwipePoint = null;
+    this.cutGuideDone = [];
     this.rollProgress = 0;
     this.isRollingDrag = false;
     this.addedToppings = emptyToppings();
@@ -3444,6 +3455,8 @@ export class GameEngine {
       pointerDragRoad: false,
       parryOrigin: null as Point2D | null,
       lastBossAngle: null as number | null,
+      rollStartInsideMat: false,
+      rollAddedDist: 0,
     };
     this.activeTouches.set(inputId, touchState);
 
@@ -3629,7 +3642,9 @@ export class GameEngine {
     if (!this.order) return;
 
     if (this.prepStep === 'CUTTING') {
-      if (pointInRect(pt.x, pt.y, layout.secondaryBtn)) {
+      const isCompactGuidedCut =
+        ENABLE_GUIDED_CUT_ON_COMPACT && layout.isCompact && Boolean(layout.stepBarRect) && this.dishType === 'CUON';
+      if (!isCompactGuidedCut && pointInRect(pt.x, pt.y, layout.secondaryBtn)) {
         if (this.dishType === 'CUON') {
           this.slices = [
             createInitialRollPolygon(
@@ -3640,6 +3655,7 @@ export class GameEngine {
               this.nextId
             ),
           ];
+          this.cutGuideDone = [];
         } else {
           this.slices = [
             createInitialRicePaper(layout.boardCenterX, layout.boardCenterY, layout.boardRadius, this.nextId),
@@ -3689,6 +3705,23 @@ export class GameEngine {
           return;
         }
       }
+      // Tap directly on an ingredient laid out on the rice paper mat (CUON) to remove it
+      if (this.dishType === 'CUON' && pointInRect(pt.x, pt.y, layout.matRect) && this.bowlIngredients.length > 0) {
+        const sheetPad = 18;
+        const fullX = layout.matRect.x + sheetPad;
+        const fullW = layout.matRect.w - sheetPad * 2;
+        const fullTop = layout.matRect.y + 14;
+        const fullH = layout.matRect.h - 28;
+        for (let i = this.bowlIngredients.length - 1; i >= 0; i--) {
+          const ing = this.bowlIngredients[i];
+          const ix = fullX + fullW * 0.5 + ing.ox * (fullW * 0.36);
+          const iy = fullTop + fullH * 0.55 + ing.oy * (fullH * 0.16);
+          if (Math.hypot(pt.x - ix, pt.y - iy) <= 28) {
+            this.removeTopping(ing.id);
+            return;
+          }
+        }
+      }
     } else if (this.prepStep === 'SEASONING') {
       const primRect = layout.isCompact
         ? layout.primaryBtn
@@ -3720,6 +3753,8 @@ export class GameEngine {
         return;
       }
       touchState.isRollingDrag = true;
+      touchState.rollStartInsideMat = pointInRect(pt.x, pt.y, layout.matRect);
+      touchState.rollAddedDist = 0;
       this.isRollingDrag = true;
       this.lastRollDragY = pt.y;
     } else if (this.prepStep === 'SHAKING') {
@@ -3821,7 +3856,9 @@ export class GameEngine {
       this.lastRollDragY = pt.y;
       if (touchState) touchState.lastPt = pt;
       if (dy > 2) {
-        this.addRollProgress(dy * 0.65);
+        const delta = dy * 0.65;
+        this.addRollProgress(delta);
+        if (touchState) touchState.rollAddedDist = (touchState.rollAddedDist ?? 0) + delta;
       }
       return;
     }
@@ -3832,11 +3869,25 @@ export class GameEngine {
       if (prevPt) {
         const dist = Math.hypot(pt.x - prevPt.x, pt.y - prevPt.y);
         if (dist >= 6) {
+          const layout = computePrepLayout(this.width, this.height);
+          const isCompactGuidedCut =
+            ENABLE_GUIDED_CUT_ON_COMPACT && layout.isCompact && Boolean(layout.stepBarRect) && this.dishType === 'CUON';
           if (anchor) {
-            const cutHappened = this.performSliceSegment(anchor, pt, false);
-            if (cutHappened) {
-              if (touchState) touchState.anchorPt = pt;
-              this.activeCutAnchor = pt;
+            if (isCompactGuidedCut) {
+              if (Math.hypot(pt.x - anchor.x, pt.y - anchor.y) >= 24) {
+                const guides = buildCutGuides(layout.rollRect, this.order?.targetSlices ?? 4);
+                const guide = findSnapCutGuide(anchor, pt, guides, this.cutGuideDone, CUT_SNAP_RADIUS);
+                if (guide && this.applyGuidedCut(guide)) {
+                  if (touchState) touchState.anchorPt = pt;
+                  this.activeCutAnchor = pt;
+                }
+              }
+            } else {
+              const cutHappened = this.performSliceSegment(anchor, pt, false);
+              if (cutHappened) {
+                if (touchState) touchState.anchorPt = pt;
+                this.activeCutAnchor = pt;
+              }
             }
           }
           if (touchState) touchState.lastPt = pt;
@@ -3904,12 +3955,42 @@ export class GameEngine {
       this.phase === 'COOKING' &&
       !this.tiktokQte.active &&
       this.order &&
+      this.prepStep === 'ROLLING' &&
+      touchState?.isRollingDrag &&
+      touchState.rollStartInsideMat
+    ) {
+      const upDist = touchState.anchorPt.y - pt.y;
+      if (upDist >= 40) {
+        const remaining = upDist * 0.75 - (touchState.rollAddedDist ?? 0);
+        if (remaining > 0) {
+          this.addRollProgress(remaining);
+        }
+      }
+    }
+
+    if (
+      this.screen === 'PLAYING' &&
+      !this.shopOpen &&
+      this.phase === 'COOKING' &&
+      !this.tiktokQte.active &&
+      this.order &&
       this.prepStep === 'CUTTING' &&
       (touchState?.isSwiping || (inputId === -1 && this.isSwiping))
     ) {
       const anchor = touchState?.anchorPt ?? this.activeCutAnchor;
       if (anchor) {
-        this.performSliceSegment(anchor, pt, true);
+        const layout = computePrepLayout(this.width, this.height);
+        const isCompactGuidedCut =
+          ENABLE_GUIDED_CUT_ON_COMPACT && layout.isCompact && Boolean(layout.stepBarRect) && this.dishType === 'CUON';
+        if (isCompactGuidedCut) {
+          const guides = buildCutGuides(layout.rollRect, this.order.targetSlices ?? 4);
+          const guide = findSnapCutGuide(anchor, pt, guides, this.cutGuideDone, CUT_SNAP_RADIUS);
+          if (guide) {
+            this.applyGuidedCut(guide);
+          }
+        } else {
+          this.performSliceSegment(anchor, pt, true);
+        }
       }
     }
 
@@ -3936,6 +4017,44 @@ export class GameEngine {
     }
   }
 
+  private applyGuidedCut(guide: CutGuide): boolean {
+    if (this.cutGuideDone[guide.index]) return false;
+    let cutHappened = this.performSliceSegment(guide.cutA, guide.cutB, true);
+    if (!cutHappened && this.slices.length < (this.order?.targetSlices ?? 4)) {
+      const largest = [...this.slices].sort((a, b) => b.area - a.area)[0];
+      if (largest && largest.points.length >= 3) {
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (const p of largest.points) {
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+        }
+        const split = splitPolygonBySegment(
+          largest,
+          { x: largest.cx, y: minY - 22 },
+          { x: largest.cx, y: maxY + 22 },
+          this.nextId,
+          true,
+          280
+        );
+        if (split) {
+          this.slices = this.slices.flatMap((s) => (s.id === largest.id ? [split[0], split[1]] : [s]));
+          cutHappened = true;
+          this.audio.playSlice();
+          Haptics.cutRicePaper();
+          this.shakeIntensity = Math.max(this.shakeIntensity, 4);
+          this.spawnParticles(guide.mid.x, guide.mid.y, 8, '#FEF08A', 'circle');
+          const target = this.order?.targetSlices ?? 4;
+          this.spawnCallout('XOẸT!', `${this.slices.length}/${target} khúc`, guide.mid.x, guide.mid.y - 18, '#F59E0B');
+        }
+      }
+    }
+    if (cutHappened) {
+      this.cutGuideDone[guide.index] = true;
+    }
+    return cutHappened;
+  }
+
   private performSliceSegment(a: Point2D, b: Point2D, allowExtendedLine: boolean): boolean {
     let anyCut = false;
     const nextSlices: PolygonSlice[] = [];
@@ -3960,7 +4079,13 @@ export class GameEngine {
       const midX = (a.x + b.x) * 0.5;
       const midY = (a.y + b.y) * 0.5;
       this.spawnParticles(midX, midY, 8, '#FEF08A', 'circle');
-      this.spawnCallout('XOẸT!', `${this.slices.length} khúc`, midX, midY - 18, '#F59E0B');
+      const layout = computePrepLayout(this.width, this.height);
+      const isCompactGuidedCut =
+        ENABLE_GUIDED_CUT_ON_COMPACT && layout.isCompact && Boolean(layout.stepBarRect) && this.dishType === 'CUON';
+      const label = isCompactGuidedCut
+        ? `${this.slices.length}/${this.order?.targetSlices ?? 4} khúc`
+        : `${this.slices.length} khúc`;
+      this.spawnCallout('XOẸT!', label, midX, midY - 18, '#F59E0B');
     }
     return anyCut;
   }
@@ -3974,6 +4099,7 @@ export class GameEngine {
     }
     if (this.rollProgress >= 100) {
       const layout = computePrepLayout(this.width, this.height);
+      this.hasRolledThisSession = true;
       this.slices = [
         createInitialRollPolygon(
           layout.boardCenterX,
@@ -3983,11 +4109,19 @@ export class GameEngine {
           this.nextId
         ),
       ];
+      const targetSlices = this.order?.targetSlices ?? 4;
+      this.cutGuideDone = new Array(Math.max(0, targetSlices - 1)).fill(false);
       this.prepStep = 'CUTTING';
       this.swipeTrail = [];
       this.audio.playSeasonResult(true);
       this.spawnParticles(layout.boardCenterX, layout.boardCenterY, 12, '#FDE047', 'circle');
-      this.spawnCallout('Cuốn Chặt Tay!', 'Cắt tự do ngang dọc!', layout.boardCenterX, layout.boardCenterY - 40, '#10B981');
+      this.spawnCallout(
+        'Cuốn Chặt Tay!',
+        layout.isCompact ? 'Chạm hoặc vuốt theo vạch cắt!' : 'Cắt tự do ngang dọc!',
+        layout.boardCenterX,
+        layout.boardCenterY - 40,
+        '#10B981'
+      );
       this.emitHud(true);
     }
   }
@@ -6458,7 +6592,10 @@ export class GameEngine {
       hoverTrayId,
       hoverPrimary: Boolean(this.order) && pointInRect(this.hoverPos.x, this.hoverPos.y, activePrimary),
       hoverSecondary:
-        Boolean(this.order) && (this.prepStep === 'CUTTING' || (this.prepStep === 'TOPPINGS' && this.toppingHistory.length > 0)) && pointInRect(this.hoverPos.x, this.hoverPos.y, this.prepStep === 'TOPPINGS' ? getToppingUndoRect(layout) : layout.secondaryBtn),
+        Boolean(this.order) &&
+        !(ENABLE_GUIDED_CUT_ON_COMPACT && layout.isCompact && Boolean(layout.stepBarRect) && this.dishType === 'CUON' && this.prepStep === 'CUTTING') &&
+        (this.prepStep === 'CUTTING' || (this.prepStep === 'TOPPINGS' && this.toppingHistory.length > 0)) &&
+        pointInRect(this.hoverPos.x, this.hoverPos.y, this.prepStep === 'TOPPINGS' ? getToppingUndoRect(layout) : layout.secondaryBtn),
       hoverShake:
         Boolean(this.order) && this.prepStep === 'SHAKING' && pointInRect(this.hoverPos.x, this.hoverPos.y, layout.shakeBtn),
       hoverRoll:
@@ -6490,6 +6627,9 @@ export class GameEngine {
       diyMalfunctionActive: this.diyMalfunction.active,
       wuxiaCombat: this.wuxiaCombat,
       backdropImg: this.backdropImg,
+      cutGuideDone: this.cutGuideDone,
+      showRollHint: !this.hasRolledThisSession,
+      compactTutorialActive: this.day === 1 && this.playerProgress.completedOrders < 2,
     };
 
     renderGameFrame(this.ctx, renderState);

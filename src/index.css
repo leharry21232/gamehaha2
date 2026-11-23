@@ -2,7 +2,7 @@
 
 @layer base {
    :root {
-    --mobile-game-hub-base-height: 202px;
+    --mobile-game-hub-base-height: 146px;
     --font-display: "Bricolage Grotesque", system-ui, sans-serif;
     --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
     --font-mono: "JetBrains Mono", monospace;
@@ -168,19 +168,18 @@
 .mobile-game-hub {
   display: none;
 }
-  .mobile-game-hub__card {
+.mobile-game-hub__card {
   box-sizing: border-box;
-  min-height: calc(var(--mobile-game-hub-base-height) + max(8px, var(--sat)));
-  padding-top: max(8px, var(--sat));
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 6px 8px 8px;
+  gap: 4px;
+  padding: max(5px, var(--sat)) 8px 6px;
   color: #F8FAFC;
   background: rgba(24, 25, 32, 0.97);
   border: 2px solid #090B10;
   border-top: 0;
-  border-radius: 0 0 16px 16px;
+  border-radius: 0 0 14px 14px;
   box-shadow: 0 4px 0 rgba(0, 0, 0, 0.32);
 }
 .mobile-game-hub__topline,
@@ -223,23 +222,23 @@
 .mobile-game-hub__clock { color: #7DD3FC; font: 800 10px/1 var(--font-mono); }
 .mobile-game-hub__clock.is-urgent { color: #FB7185; }
 .mobile-hub-icon-button {
-  width: 31px;
-  height: 31px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1.5px solid #475569;
-  border-radius: 9px;
+  border-radius: 8px;
   color: #F8FAFC;
   background: #272A36;
   touch-action: manipulation;
 }
-.mobile-hub-icon-button svg { width: 15px; height: 15px; }
+.mobile-hub-icon-button svg { width: 14px; height: 14px; }
 .mobile-hub-icon-button--pause { color: #111318; background: #FBBF24; border-color: #090B10; }
 .mobile-game-hub__stats {
   display: grid;
   grid-template-columns: 1.45fr 0.9fr 0.7fr 0.8fr;
-  gap: 5px;
+  gap: 4px;
 }
 .mobile-hub-stat {
   display: flex;
@@ -247,11 +246,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: 4px 3px;
+  gap: 1px;
+  padding: 3px 2px;
   background: #252936;
   border: 1px solid #3F4656;
-  border-radius: 8px;
+  border-radius: 7px;
 }
 .mobile-hub-stat b {
   max-width: 100%;
@@ -273,12 +272,12 @@
   align-items: center;
   gap: 5px;
   min-width: 0;
-  padding: 3px 6px;
-  border-radius: 7px;
+  padding: 2px 6px;
+  border-radius: 6px;
   background: rgba(51, 65, 85, 0.6);
   color: #CBD5E1;
   font-size: 9px;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 .mobile-game-hub__mission-title {
   min-width: 0;
@@ -300,26 +299,33 @@
 }
 .mobile-game-hub__chairs-icons i.is-active { background: #EF4444; }
 .mobile-game-hub__actions {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
 }
 .mobile-hub-action {
   display: flex;
+  flex: 1 1 0;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
-  min-height: 36px;
-  padding: 4px 3px;
+  min-height: 32px;
+  padding: 3px 3px;
+  overflow: hidden;
   border: 2px solid #090B10;
   border-radius: 9px;
   box-shadow: 0 2px 0 rgba(0,0,0,.3);
-  font: 900 9px/1.05 var(--font-display);
+  font: 900 9.5px/1.05 var(--font-display);
   white-space: nowrap;
   touch-action: manipulation;
 }
-.mobile-hub-action svg { width: 13px; height: 13px; flex: 0 0 auto; }
+.mobile-hub-action span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mobile-hub-action svg { width: 12px; height: 12px; flex: 0 0 auto; }
 .mobile-hub-action:active { transform: translateY(1px); box-shadow: 0 1px 0 rgba(0,0,0,.3); }
 .mobile-hub-action:disabled { opacity: .45; }
 .mobile-hub-action--violet { background: #6366F1; color: white; }
@@ -339,54 +345,36 @@
 }
 
 @media (max-width: 360px) {
-  .mobile-game-hub__card { gap: 4px; padding: 5px 6px 6px; }
+  .mobile-game-hub__card { gap: 3px; padding: max(4px, var(--sat)) 6px 5px; }
   .mobile-game-hub__level-label { font-size: 9px; }
   .mobile-game-hub__xp-text { font-size: 7px; }
-  .mobile-hub-action { min-height: 34px; gap: 2px; font-size: 8px; }
-  .mobile-hub-action svg { width: 12px; height: 12px; }
+  .mobile-hub-action { min-height: 30px; gap: 2px; padding: 2px; font-size: 8.5px; }
+  .mobile-hub-action svg { width: 11px; height: 11px; }
   .mobile-hub-stat b { font-size: 9px; }
 }
 
-@media (orientation: landscape) and (max-height: 520px) {
-  .mobile-game-hub__card { gap: 3px; padding: 3px 6px 5px; }
-  .mobile-game-hub__mission,
-  .mobile-game-hub__condition { display: none; }
-  .mobile-game-hub__stats { grid-template-columns: 1.5fr 0.8fr 0.7fr 0.8fr; }
-  .mobile-game-hub__stat { padding: 2px; }
-  .mobile-game-hub__actions { gap: 3px; }
-  .mobile-hub-action { min-height: 30px; padding: 2px; font-size: 8px; }
-  .mobile-hub-icon-button { width: 28px; height: 28px; }
-}
-
-
 /* Canvas and HTML Mobile Hub share the same vertical reservation at each breakpoint. */
 @media (max-width: 360px), (orientation: portrait) and (max-height: 600px) {
-  :root { --mobile-game-hub-base-height: 170px; }
-  .mobile-game-hub__mission,
-  .mobile-game-hub__condition { display: none; }
-}
-@media (max-width: 360px) {
-  .mobile-game-hub__actions { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; }
-  .mobile-hub-action { min-height: 32px; gap: 2px; padding: 3px 2px; font-size: 7px; }
-  .mobile-hub-action svg { width: 11px; height: 11px; }
+  :root { --mobile-game-hub-base-height: 138px; }
+  .mobile-game-hub__mission { display: none; }
 }
 @media (max-width: 320px) and (orientation: portrait) and (max-height: 500px) {
   :root { --mobile-game-hub-base-height: 136px; }
-  .mobile-game-hub__actions { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; }
-  .mobile-hub-action { min-height: 28px; gap: 1px; padding: 2px 1px; font-size: 6.5px; }
+  .mobile-game-hub__condition { display: none; }
+  .mobile-hub-action { min-height: 28px; gap: 1px; padding: 2px 1px; font-size: 7px; }
   .mobile-hub-action svg { width: 9px; height: 9px; }
 }
 @media (orientation: landscape) and (max-height: 520px) {
-  :root { --mobile-game-hub-base-height: 78px; }
-  .mobile-game-hub__card { padding: max(8px, var(--sat)) 6px 5px; }
+  :root { --mobile-game-hub-base-height: 74px; }
+  .mobile-game-hub__card { padding: max(4px, var(--sat)) 6px 4px; gap: 3px; }
   .mobile-game-hub__level,
   .mobile-game-hub__stats,
   .mobile-game-hub__mission,
   .mobile-game-hub__condition { display: none; }
-  .mobile-game-hub__topline { min-height: 31px; justify-content: flex-end; }
+  .mobile-game-hub__topline { min-height: 28px; justify-content: flex-end; }
   .mobile-game-hub__utility { width: 100%; justify-content: flex-end; }
-  .mobile-game-hub__actions { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 3px; }
-  .mobile-hub-action { min-height: 30px; padding: 2px; font-size: 8px; }
+  .mobile-game-hub__actions { gap: 3px; }
+  .mobile-hub-action { min-height: 28px; padding: 2px; font-size: 8.5px; }
 }
 
 /* ===== KHU PHỐ SAIGON: responsive map, scene art and touch UI ===== */

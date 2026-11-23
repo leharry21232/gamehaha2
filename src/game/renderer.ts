@@ -1,3 +1,4 @@
+import { buildCutGuides, type CutGuide } from './cutGuides';
 import {
   computePrepLayout,
   computeRaidLayout,
@@ -12,6 +13,7 @@ import {
   getToppingUndoRect,
   getQteArrowRects,
   getWaitingCustomerRects,
+  MOBILE_MIN_TAP,
   type PrepLayout,
   type RaidLayout,
   type Rect,
@@ -129,9 +131,18 @@ export interface RenderState {
   diyMalfunctionActive: boolean;
   wuxiaCombat: WuxiaCombatState;
   backdropImg: HTMLImageElement | null;
+  cutGuideDone?: boolean[];
+  showRollHint?: boolean;
+  compactTutorialActive?: boolean;
 }
 
 const INK = '#111318';
+const MOBILE_STEP_LABEL_FONT = '800 15px "Bricolage Grotesque", sans-serif';
+const MOBILE_ORDER_CHIP_FONT = '700 11px "Plus Jakarta Sans", sans-serif';
+const MOBILE_TRAY_NAME_FONT = '800 12px "Bricolage Grotesque", sans-serif';
+const CUT_GUIDE_STROKE = '#D97706';
+const CUT_GUIDE_GLOW = '#F59E0B';
+const CUT_GUIDE_DONE_COLOR = '#059669';
 
 function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
   const radius = Math.min(r, w * 0.5, h * 0.5);
@@ -986,33 +997,209 @@ function drawOrderBubble(
 
   const padX = 16;
   const innerW = b.w - padX * 2;
+  if (layout.isCompact && order.dishType === 'CUON' && Boolean(layout.stepBarRect)) {
+    const cPadX = 10;
+    const cInnerW = Math.max(40, b.w - cPadX * 2);
+    const topY = b.y + 7;
+
+    const timerText = `Chờ ${Math.ceil(order.patience)}s`;
+    ctx.font = '800 10px "JetBrains Mono", monospace';
+    const timerW = ctx.measureText(timerText).width + 6;
+    ctx.fillStyle = order.patience / order.maxPatience < 0.28 ? '#BE123C' : '#334155';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(timerText, b.x + b.w - cPadX, topY + 8);
+
+    let specialTag = '';
+    if (order.baziProfile) specialTag = `☯ ${order.baziProfile.dayMaster}`;
+    else if (order.hasTraTacCombo) specialTag = 'TRÀ TẮC L';
+    else if (order.elementTag) specialTag = `☯ ${ELEMENT_META[order.elementTag].shortLabel}`;
+    else if (order.hexagramBoosted) specialTag = '+35% QUẺ';
+
+    const leftAvailW = Math.max(48, cInnerW - timerW);
+    ctx.font = '800 9px "Bricolage Grotesque", sans-serif';
+    let dishTag = 'BÁNH CUỐN';
+    let dishW = Math.min(leftAvailW * 0.56, ctx.measureText(dishTag).width + 10);
+    if (specialTag) {
+      ctx.font = '800 8px "Bricolage Grotesque", sans-serif';
+      const specTestW = ctx.measureText(specialTag).width + 8;
+      if (dishW + 4 + specTestW > leftAvailW) {
+        dishTag = 'CUỐN';
+        ctx.font = '800 9px "Bricolage Grotesque", sans-serif';
+        dishW = Math.min(leftAvailW * 0.42, ctx.measureText(dishTag).width + 10);
+      }
+    }
+    drawComicBox(ctx, { x: b.x + cPadX, y: topY, w: dishW, h: 17 }, '#DBEAFE', 5, 0, 1.5);
+    ctx.font = '800 9px "Bricolage Grotesque", sans-serif';
+    ctx.fillStyle = '#1E40AF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(dishTag, b.x + cPadX + dishW * 0.5, topY + 8.5, dishW - 4);
+
+    if (specialTag) {
+      const specMaxW = Math.max(24, leftAvailW - dishW - 4);
+      ctx.font = '800 8px "Bricolage Grotesque", sans-serif';
+      const specW = Math.min(specMaxW, ctx.measureText(specialTag).width + 8);
+      drawComicBox(ctx, { x: b.x + cPadX + dishW + 4, y: topY + 0.5, w: specW, h: 16 }, '#F3E8FF', 5, 0, 1);
+      ctx.fillStyle = '#7E22CE';
+      ctx.fillText(specialTag, b.x + cPadX + dishW + 4 + specW * 0.5, topY + 8.5, specW - 4);
+    }
+
+    interface OrderChip {
+      label: string;
+      bg: string;
+      border: string;
+      text: string;
+    }
+    const chips: OrderChip[] = [];
+    const reqEntries = (Object.keys(order.requiredToppings) as ToppingId[]).filter((k) => order.requiredToppings[k] > 0);
+    for (const tid of reqEntries) {
+      const need = order.requiredToppings[tid];
+      const got = addedToppings[tid] || 0;
+      const done = got === need;
+      const over = got > need;
+      chips.push({
+        label: `${TOPPING_MAP[tid].shortName} ${got}/${need}`,
+        bg: over ? '#FFE4E6' : done ? '#DCFCE7' : '#FEF3C7',
+        border: over ? '#E11D48' : done ? '#059669' : '#D97706',
+        text: over ? '#9F1239' : done ? '#065F46' : '#78350F',
+      });
+    }
+    if (order.targetSlices > 0) {
+      const cutDone = cutCount === order.targetSlices;
+      const cutOver = cutCount > order.targetSlices;
+      chips.push({
+        label: prepStep === 'CUTTING' ? `Cắt ${cutCount}/${order.targetSlices}` : `Cắt ${order.targetSlices} khúc`,
+        bg: cutOver ? '#FFE4E6' : cutDone ? '#DCFCE7' : '#DBEAFE',
+        border: cutOver ? '#E11D48' : cutDone ? '#059669' : '#2563EB',
+        text: cutOver ? '#9F1239' : cutDone ? '#065F46' : '#1E40AF',
+      });
+    }
+    chips.push({
+      label: `Chanh: ${SEASONING_LABEL[order.limeTarget]}`,
+      bg: '#ECFCCB',
+      border: '#65A30D',
+      text: '#365314',
+    });
+    chips.push({
+      label: `Sa tế: ${SEASONING_LABEL[order.chiliTarget]}`,
+      bg: '#FFEDD5',
+      border: '#EA580C',
+      text: '#9A3412',
+    });
+
+    ctx.font = MOBILE_ORDER_CHIP_FONT;
+    const chipStartY = b.y + 27;
+    const chipH = 18;
+    const chipGapX = 4;
+    const chipGapY = 3;
+    let cx = b.x + cPadX;
+    let cy = chipStartY;
+    let rowIdx = 0;
+
+    for (let idx = 0; idx < chips.length; idx++) {
+      const chip = chips[idx];
+      const rawW = ctx.measureText(chip.label).width + 8;
+      const chipW = Math.min(cInnerW, rawW);
+      if (cx > b.x + cPadX && cx + chipW > b.x + cPadX + cInnerW) {
+        if (rowIdx >= 2) {
+          const remain = chips.length - idx;
+          const moreLabel = `+${remain}`;
+          const moreW = Math.min(30, b.x + cPadX + cInnerW - cx);
+          if (moreW >= 20) {
+            ctx.fillStyle = '#F1F5F9';
+            roundRectPath(ctx, cx, cy, moreW, chipH, 5);
+            ctx.fill();
+            ctx.strokeStyle = '#64748B';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+            ctx.fillStyle = '#334155';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(moreLabel, cx + moreW * 0.5, cy + chipH * 0.5 + 0.5, moreW - 4);
+          }
+          break;
+        }
+        rowIdx += 1;
+        cx = b.x + cPadX;
+        cy += chipH + chipGapY;
+      }
+      ctx.fillStyle = chip.bg;
+      roundRectPath(ctx, cx, cy, chipW, chipH, 5);
+      ctx.fill();
+      ctx.strokeStyle = chip.border;
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+      ctx.fillStyle = chip.text;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(chip.label, cx + chipW * 0.5, cy + chipH * 0.5 + 0.5, chipW - 4);
+      cx += chipW + chipGapX;
+    }
+
+    const chipBottomY = cy + chipH;
+    const barY2 = Math.min(b.y + b.h - 20, chipBottomY + 4);
+    const pRatio = Math.max(0, Math.min(1, order.patience / order.maxPatience));
+    ctx.fillStyle = '#E2E8F0';
+    roundRectPath(ctx, b.x + cPadX, barY2, cInnerW, 5, 2.5);
+    ctx.fill();
+    ctx.fillStyle = pRatio > 0.5 ? '#10B981' : pRatio > 0.25 ? '#F59E0B' : '#E11D48';
+    if (pRatio > 0.02) {
+      roundRectPath(ctx, b.x + cPadX + 1, barY2 + 1, Math.max(4, (cInnerW - 2) * pRatio), 3, 1.5);
+      ctx.fill();
+    }
+
+    const quoteTopY = barY2 + 8;
+    const availQuoteH = b.y + b.h - 4 - quoteTopY;
+    if (availQuoteH >= 11) {
+      ctx.font = '600 10px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#475569';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      const lines = wrapText(ctx, `"${order.dialogue}"`, cInnerW);
+      const lineH = 11;
+      const maxLines = Math.max(1, Math.min(2, Math.floor(availQuoteH / lineH)));
+      for (let i = 0; i < Math.min(maxLines, lines.length); i++) {
+        let line = lines[i];
+        if (i === maxLines - 1 && lines.length > maxLines) {
+          while (line.length > 4 && ctx.measureText(`${line}…"`).width > cInnerW) {
+            line = line.slice(0, -1);
+          }
+          line = `${line}…"`;
+        }
+        ctx.fillText(line, b.x + cPadX, quoteTopY + i * lineH, cInnerW);
+      }
+    }
+    return;
+  }
+
   if (layout.isCompact) {
-    // Phone card uses two compact header rows so special labels never collide with the timer.
-    const barY = b.y + 12;
+    // Phone card uses compact header rows so special labels never collide with the timer or drop toppings.
+    const barY = b.y + 10;
     ctx.font = '800 8px "Bricolage Grotesque", sans-serif';
     const dishTag = order.dishType === 'CUON' ? 'BÁNH CUỐN' : 'BÁNH TRÁNG TRỘN';
-    const dishW = Math.min(innerW * 0.58, ctx.measureText(dishTag).width + 14);
-    drawComicBox(ctx, { x: b.x + padX, y: barY - 2, w: dishW, h: 18 }, order.dishType === 'CUON' ? '#DBEAFE' : '#FEF3C7', 5, 0, 1.5);
+    const dishW = Math.min(innerW * 0.62, ctx.measureText(dishTag).width + 12);
+    drawComicBox(ctx, { x: b.x + padX, y: barY - 2, w: dishW, h: 17 }, order.dishType === 'CUON' ? '#DBEAFE' : '#FEF3C7', 5, 0, 1.5);
     ctx.fillStyle = order.dishType === 'CUON' ? '#1E40AF' : '#92400E';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(dishTag, b.x + padX + dishW * 0.5, barY + 7, dishW - 6);
+    ctx.fillText(dishTag, b.x + padX + dishW * 0.5, barY + 6.5, dishW - 4);
     ctx.font = '700 8px "JetBrains Mono", monospace';
     ctx.fillStyle = order.patience / order.maxPatience < 0.28 ? '#BE123C' : '#334155';
     ctx.textAlign = 'right';
-    ctx.fillText(`Chờ ${Math.ceil(order.patience)}s`, b.x + b.w - padX, barY + 7);
+    ctx.fillText(`Chờ ${Math.ceil(order.patience)}s`, b.x + b.w - padX, barY + 6.5);
 
     let specialTag = '';
     if (order.baziProfile) specialTag = `☯ ${order.baziProfile.dayMaster}`;
     else if (order.hasTraTacCombo) specialTag = 'COMBO TRÀ TẮC L';
     else if (order.elementTag) specialTag = `☯ Mệnh ${ELEMENT_META[order.elementTag].shortLabel}`;
     else if (order.hexagramBoosted) specialTag = '☯ HỢP QUẺ +35%';
-    const specialY = barY + 20;
+    const specialY = barY + 19;
     ctx.font = '800 7px "Bricolage Grotesque", sans-serif';
-    const specialW = specialTag ? Math.min(innerW * 0.55, ctx.measureText(specialTag).width + 12) : 0;
+    const specialW = specialTag ? Math.min(innerW * 0.58, ctx.measureText(specialTag).width + 10) : 0;
     if (specialTag) {
       drawComicBox(ctx, { x: b.x + padX, y: specialY - 1, w: specialW, h: 15 }, '#F3E8FF', 5, 0, 1);
       ctx.fillStyle = '#7E22CE'; ctx.textAlign = 'center';
-      ctx.fillText(specialTag, b.x + padX + specialW * 0.5, specialY + 6, specialW - 5);
+      ctx.fillText(specialTag, b.x + padX + specialW * 0.5, specialY + 6, specialW - 4);
     }
     const progressX = specialTag ? b.x + padX + specialW + 6 : b.x + padX;
     const progressW = Math.max(24, b.x + b.w - padX - progressX);
@@ -1021,27 +1208,40 @@ function drawOrderBubble(
     ctx.fillStyle = pRatio > 0.5 ? '#10B981' : pRatio > 0.25 ? '#F59E0B' : '#E11D48';
     if (pRatio > 0.02) { roundRectPath(ctx, progressX + 1, specialY + 4, Math.max(3, (progressW - 2) * pRatio), 4, 2); ctx.fill(); }
 
+    const sliceText = order.targetSlices === 0 ? 'Low-Carb' : `Cắt ${cutCount}/${order.targetSlices}`;
+    const reqEntries = (Object.keys(order.requiredToppings) as ToppingId[]).filter((k) => order.requiredToppings[k] > 0);
+    const toppingList = reqEntries.map((tid) => {
+      const need = order.requiredToppings[tid]; const got = addedToppings[tid] || 0;
+      return `${TOPPING_MAP[tid].shortName} ${got}/${need}`;
+    });
+    const reqLineFull = toppingList.length > 0 ? `${sliceText} · ${toppingList.join(' · ')}` : sliceText;
+    ctx.font = '700 8px "Plus Jakarta Sans", sans-serif';
+    const reqLines = wrapText(ctx, reqLineFull, innerW);
+    const visibleReqLines = reqLines.slice(0, 2);
+    const seasonLineH = 12;
+    const footerH = visibleReqLines.length * 10 + seasonLineH + 6;
+    const checkY = b.y + b.h - footerH;
+
     ctx.font = '700 9px "Plus Jakarta Sans", sans-serif';
     ctx.fillStyle = INK; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     const lines = wrapText(ctx, `"${order.dialogue}"`, innerW);
-    let textY = barY + 39;
-    for (let i = 0; i < Math.min(3, lines.length); i++) { ctx.fillText(lines[i], b.x + padX, textY, innerW); textY += 11; }
+    let textY = specialY + 17;
+    const maxDialogueLines = Math.max(1, Math.min(3, Math.floor((checkY - 6 - textY) / 10)));
+    for (let i = 0; i < Math.min(maxDialogueLines, lines.length); i++) {
+      ctx.fillText(lines[i], b.x + padX, textY, innerW);
+      textY += 10;
+    }
 
-    const checkY = b.y + b.h - 34;
     ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(b.x + padX, checkY - 8); ctx.lineTo(b.x + b.w - padX, checkY - 8); ctx.stroke();
-    const sliceText = order.targetSlices === 0 ? 'Low-Carb' : `Cắt ${cutCount}/${order.targetSlices}`;
-    const reqEntries = (Object.keys(order.requiredToppings) as ToppingId[]).filter((k) => order.requiredToppings[k] > 0);
-    const toppingText = reqEntries.slice(0, 2).map((tid) => {
-      const need = order.requiredToppings[tid]; const got = addedToppings[tid] || 0;
-      return `${TOPPING_MAP[tid].shortName} ${got}/${need}`;
-    }).join(' · ');
-    ctx.font = '700 7px "Plus Jakarta Sans", sans-serif';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.beginPath(); ctx.moveTo(b.x + padX, checkY - 4); ctx.lineTo(b.x + b.w - padX, checkY - 4); ctx.stroke();
+    ctx.font = '700 8px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillStyle = prepStep === 'CUTTING' ? '#D97706' : (order.targetSlices === 0 || cutCount === order.targetSlices) ? '#059669' : '#334155';
-    ctx.fillText(toppingText ? `${sliceText} · ${toppingText}` : sliceText, b.x + padX, checkY + 1, innerW);
+    visibleReqLines.forEach((line, idx) => {
+      ctx.fillText(line, b.x + padX, checkY + idx * 10, innerW);
+    });
     ctx.fillStyle = '#0F172A';
-    ctx.fillText(`Chanh ${SEASONING_LABEL[order.limeTarget]} · Sa tế ${SEASONING_LABEL[order.chiliTarget]}`, b.x + padX, checkY + 14, innerW);
+    ctx.fillText(`Chanh ${SEASONING_LABEL[order.limeTarget]} · Sa tế ${SEASONING_LABEL[order.chiliTarget]}`, b.x + padX, checkY + visibleReqLines.length * 10 + 1, innerW);
     return;
   }
 
@@ -1304,12 +1504,12 @@ function drawButton(
   const offset = hovered && !disabled ? -2 : 0;
   const rect = { x: r.x, y: r.y + offset, w: r.w, h: r.h };
   drawComicBox(ctx, rect, disabled ? '#CBD5E1' : bg, 12, disabled ? 2 : 4, 3);
-  const buttonFontSize = rect.w < 100 ? 11 : rect.w < 140 ? 13 : 15;
+  const buttonFontSize = rect.w < 68 ? 10 : rect.w < 100 ? 11 : rect.w < 140 ? 13 : 15;
   ctx.font = `800 ${buttonFontSize}px "Bricolage Grotesque", sans-serif`;
   ctx.fillStyle = disabled ? '#64748B' : textColor;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, rect.x + rect.w * 0.5, rect.y + rect.h * 0.5 + 1, Math.max(8, rect.w - 12));
+  ctx.fillText(label, rect.x + rect.w * 0.5, rect.y + rect.h * 0.5 + 1, Math.max(8, rect.w - (rect.w < 68 ? 8 : 12)));
 }
 
 function drawPowerBar(
@@ -1317,7 +1517,8 @@ function drawPowerBar(
   rect: Rect,
   meter: SeasoningMeter,
   targetLevel: 'IT' | 'VUA' | 'NHIEU',
-  fillGradientColor: string
+  fillGradientColor: string,
+  compactStacked = false
 ): void {
   drawComicBox(ctx, rect, '#E2E8F0', 10, 3, 2.5);
 
@@ -1344,6 +1545,22 @@ function drawPowerBar(
   const needleX = innerX + (meter.value / 100) * innerW;
   ctx.fillStyle = INK;
   ctx.fillRect(needleX - 3, rect.y - 4, 6, rect.h + 8);
+
+  if (compactStacked) {
+    ctx.font = '800 11px "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = '#065F46';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`Chuẩn: ${SEASONING_LABEL[targetLevel]}`, zoneX + zoneW * 0.5, rect.y + rect.h * 0.5 + 0.5, Math.max(24, zoneW - 4));
+
+    if (meter.resultLabel) {
+      ctx.font = '800 11px "Bricolage Grotesque", sans-serif';
+      ctx.fillStyle = meter.accuracy >= 0.75 ? '#059669' : '#E11D48';
+      ctx.textAlign = 'right';
+      ctx.fillText(meter.resultLabel, rect.x + rect.w - 6, rect.y + rect.h * 0.5 + 0.5);
+    }
+    return;
+  }
 
   ctx.font = '700 12px "Plus Jakarta Sans", sans-serif';
   ctx.fillStyle = '#065F46';
@@ -1522,50 +1739,82 @@ function renderCookingPhase(
     ctx.fillStyle = '#E11D48';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('💔 BỊ BÓC PHỐT TRÊN TÓP TÓP!', w * 0.5, layout.counterY - 88);
+    ctx.fillText('💔 BỊ BÓC PHỐT TRÊN TÓP TÓP!', w * 0.5, layout.counterY - 88, bpW - 16);
     ctx.font = '700 14px "Plus Jakarta Sans", sans-serif';
     ctx.fillStyle = INK;
     ctx.fillText(
       `Khách sợ không dám tới trong ${Math.ceil(state.bocPhotTimer)} giây nữa...`,
       w * 0.5,
-      layout.counterY - 54
+      layout.counterY - 54,
+      bpW - 16
     );
   }
 
   // Waiting customers standing in line behind/beside counter
   const waitingRects = getWaitingCustomerRects(layout, state.waitingCustomers.length);
-  state.waitingCustomers.forEach((wc, idx) => {
-    const wr = waitingRects[idx];
-    const cx = wr.x + wr.w * 0.5;
-    const cy = layout.counterY - 6;
-    drawMiniWaitingCustomer(ctx, wc, cx, cy, time + idx);
-    if (wc.isAngry && !state.rainEvent.active) {
-      const appRect = getAppeaseWaitingRect(wr);
-      drawComicBox(
-        ctx,
-        appRect,
-        state.hoverAppeaseWaitingIdx === idx ? '#FDE047' : '#FFE4E6',
-        7,
-        2,
-        2
-      );
-      ctx.font = '800 10px "Bricolage Grotesque", sans-serif';
-      ctx.fillStyle = '#9F1239';
-      ctx.textAlign = 'center';
+  if (layout.waitingZoneRect) {
+    const wz = layout.waitingZoneRect;
+    state.waitingCustomers.forEach((wc, idx) => {
+      const wr = waitingRects[idx];
+      if (!wr || wr.x + wr.w > wz.x + wz.w - 42) return;
+      const pillRect: Rect = { x: wr.x, y: wr.y + 2, w: wr.w, h: Math.max(20, wr.h - 4) };
+      const bg = wc.isAngry ? '#FFE4E6' : wc.customerType === 'APP_SHIPPER' ? '#FEF08A' : '#FFFDF5';
+      drawComicBox(ctx, pillRect, bg, 8, 1.5, 1.5);
+      ctx.fillStyle = wc.isAngry ? '#E11D48' : wc.customerType === 'APP_SHIPPER' ? '#16A34A' : '#3B82F6';
+      ctx.beginPath();
+      ctx.arc(pillRect.x + 11, pillRect.y + pillRect.h * 0.5, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.font = '800 9px "Bricolage Grotesque", sans-serif';
+      ctx.fillStyle = wc.isAngry ? '#9F1239' : INK;
+      ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText('🥚 Dỗ (-2k)', appRect.x + appRect.w * 0.5, appRect.y + appRect.h * 0.5);
-    } else if (wc.customerType === 'APP_SHIPPER' && !state.rainEvent.active) {
-      drawComicBox(ctx, { x: wr.x - 8, y: wr.y - 26, w: 76, h: 22 }, '#FEF08A', 6, 1.5, 2);
-      ctx.font = '800 10px "Bricolage Grotesque", sans-serif';
-      ctx.fillStyle = '#92400E';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('⚡ Shipper!', wr.x + 30, wr.y - 15);
-    }
-    if (state.rainEvent.active) {
-      drawRaincoatAndTarget(ctx, cx, cy, wc.hasRaincoat, time, 0.78);
-    }
-  });
+      const label = wc.isAngry ? 'Dỗ -2k' : wc.customerType === 'APP_SHIPPER' ? '⚡Ship' : `Đợi`;
+      ctx.fillText(label, pillRect.x + 19, pillRect.y + pillRect.h * 0.5 + 0.5, pillRect.w - 22);
+      if (state.rainEvent.active) {
+        ctx.font = '800 9px "Bricolage Grotesque", sans-serif';
+        ctx.fillStyle = wc.hasRaincoat ? '#059669' : '#0284C7';
+        ctx.textAlign = 'right';
+        ctx.fillText(wc.hasRaincoat ? '✓' : '☔', pillRect.x + pillRect.w - 3, pillRect.y + pillRect.h * 0.5);
+      }
+    });
+  } else {
+    state.waitingCustomers.forEach((wc, idx) => {
+      const wr = waitingRects[idx];
+      const cx = wr.x + wr.w * 0.5;
+      const cy = layout.counterY - 6;
+      drawMiniWaitingCustomer(ctx, wc, cx, cy, time + idx);
+      if (wc.isAngry && !state.rainEvent.active) {
+        const appRect = getAppeaseWaitingRect(wr);
+        drawComicBox(
+          ctx,
+          appRect,
+          state.hoverAppeaseWaitingIdx === idx ? '#FDE047' : '#FFE4E6',
+          7,
+          2,
+          2
+        );
+        ctx.font = '800 10px "Bricolage Grotesque", sans-serif';
+        ctx.fillStyle = '#9F1239';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🥚 Dỗ (-2k)', appRect.x + appRect.w * 0.5, appRect.y + appRect.h * 0.5);
+      } else if (wc.customerType === 'APP_SHIPPER' && !state.rainEvent.active) {
+        drawComicBox(ctx, { x: wr.x - 8, y: wr.y - 26, w: 76, h: 22 }, '#FEF08A', 6, 1.5, 2);
+        ctx.font = '800 10px "Bricolage Grotesque", sans-serif';
+        ctx.fillStyle = '#92400E';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('⚡ Shipper!', wr.x + 30, wr.y - 15);
+      }
+      if (state.rainEvent.active) {
+        drawRaincoatAndTarget(ctx, cx, cy, wc.hasRaincoat, time, 0.78);
+      }
+    });
+  }
 
   // Feature 5: Clickable Electric Pole ("Cột Điện Tín Dụng Đen") on far left sidewalk
   drawElectricPoleNpc(ctx, getElectricPoleRect(layout), state.loanDebt, state.hoverElectricPole, time);
@@ -1613,38 +1862,42 @@ function renderCookingPhase(
   ctx.lineTo(w, layout.counterY + 22);
   ctx.stroke();
 
+  const isCompactCuon = layout.isCompact && state.dishType === 'CUON' && Boolean(layout.stepBarRect);
+
   // Sign with Vehicle Level & optional RGB LED Upgrade glow!
-  const vehicleTag =
-    state.vehicleLevel === 3
-      ? 'AIR BLADE'
-      : state.vehicleLevel === 2
-      ? 'XE ĐẨY INOX'
-      : 'RỔ BÁNH TRÁNG';
-  const signW = 178;
-  const signRect: Rect = { x: 18, y: layout.counterY - 14, w: signW, h: 30 };
-  if (state.upgrades.ledRgb) {
-    const hue = Math.floor((time * 160) % 360);
-    ctx.save();
-    ctx.strokeStyle = `hsl(${hue}, 90%, 55%)`;
-    ctx.lineWidth = 7;
-    roundRectPath(ctx, signRect.x - 2, signRect.y - 2, signRect.w + 4, signRect.h + 4, 9);
-    ctx.stroke();
-    ctx.restore();
-    drawComicBox(ctx, signRect, '#111318', 7, 3, 2.5);
-    ctx.font = '800 12px "Bricolage Grotesque", sans-serif';
-    ctx.fillStyle = `hsl(${(hue + 60) % 360}, 95%, 65%)`;
-  } else {
-    drawComicBox(ctx, signRect, '#F59E0B', 7, 3, 2.5);
-    ctx.font = '800 12px "Bricolage Grotesque", sans-serif';
-    ctx.fillStyle = INK;
+  if (!isCompactCuon) {
+    const vehicleTag =
+      state.vehicleLevel === 3
+        ? 'AIR BLADE'
+        : state.vehicleLevel === 2
+        ? 'XE ĐẨY INOX'
+        : 'RỔ BÁNH TRÁNG';
+    const signW = 178;
+    const signRect: Rect = { x: 18, y: layout.counterY - 14, w: signW, h: 30 };
+    if (state.upgrades.ledRgb) {
+      const hue = Math.floor((time * 160) % 360);
+      ctx.save();
+      ctx.strokeStyle = `hsl(${hue}, 90%, 55%)`;
+      ctx.lineWidth = 7;
+      roundRectPath(ctx, signRect.x - 2, signRect.y - 2, signRect.w + 4, signRect.h + 4, 9);
+      ctx.stroke();
+      ctx.restore();
+      drawComicBox(ctx, signRect, '#111318', 7, 3, 2.5);
+      ctx.font = '800 12px "Bricolage Grotesque", sans-serif';
+      ctx.fillStyle = `hsl(${(hue + 60) % 360}, 95%, 65%)`;
+    } else {
+      drawComicBox(ctx, signRect, '#F59E0B', 7, 3, 2.5);
+      ctx.font = '800 12px "Bricolage Grotesque", sans-serif';
+      ctx.fillStyle = INK;
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(
+      state.upgrades.ledRgb ? `✨ ${vehicleTag} RGB` : vehicleTag,
+      18 + signW * 0.5,
+      layout.counterY + 1
+    );
   }
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(
-    state.upgrades.ledRgb ? `✨ ${vehicleTag} RGB` : vehicleTag,
-    18 + signW * 0.5,
-    layout.counterY + 1
-  );
 
   // Loa Kẹo Kéo speaker prop if unlocked!
   if (state.upgrades.loaKeoKeo && w > 880) {
@@ -1684,91 +1937,153 @@ function renderCookingPhase(
   }
 
   // Viral Mode & Daily Buff badges on counter rim
-  let badgeX = 208;
-  if (state.viralOrdersLeft > 0) {
-    drawComicBox(ctx, { x: badgeX, y: layout.counterY - 14, w: 148, h: 28 }, '#FEF08A', 7, 2, 2.5);
-    ctx.font = '800 12px "Bricolage Grotesque", sans-serif';
-    ctx.fillStyle = '#E11D48';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`🔥 VIRAL x3 (${state.viralOrdersLeft})`, badgeX + 74, layout.counterY);
-    badgeX += 156;
-  }
-  if (state.dailyBuffs.luckyCharm) {
-    drawComicBox(ctx, { x: badgeX, y: layout.counterY - 14, w: 122, h: 28 }, '#DCFCE7', 7, 2, 2.5);
-    ctx.font = '800 11px "Bricolage Grotesque", sans-serif';
-    ctx.fillStyle = '#15803D';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🍀 +10% Tiền Bo', badgeX + 61, layout.counterY);
-    badgeX += 130;
-  }
-  if (state.dailyBuffs.proteinBuff) {
-    drawComicBox(ctx, { x: badgeX, y: layout.counterY - 14, w: 128, h: 28 }, '#FFE4E6', 7, 2, 2.5);
-    ctx.font = '800 11px "Bricolage Grotesque", sans-serif';
-    ctx.fillStyle = '#BE123C';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('💪 Chạy Nhanh!', badgeX + 64, layout.counterY);
-    badgeX += 136;
-  }
-  if (state.dailyBuffs.landladySpeedBuff) {
-    drawComicBox(ctx, { x: badgeX, y: layout.counterY - 14, w: 148, h: 28 }, '#FEF3C7', 7, 2, 2.5);
-    ctx.font = '800 11px "Bricolage Grotesque", sans-serif';
-    ctx.fillStyle = '#92400E';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('🧹 Bà Chủ Nhà +Speed', badgeX + 74, layout.counterY);
+  if (!isCompactCuon) {
+    let badgeX = 208;
+    if (state.viralOrdersLeft > 0) {
+      drawComicBox(ctx, { x: badgeX, y: layout.counterY - 14, w: 148, h: 28 }, '#FEF08A', 7, 2, 2.5);
+      ctx.font = '800 12px "Bricolage Grotesque", sans-serif';
+      ctx.fillStyle = '#E11D48';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`🔥 VIRAL x3 (${state.viralOrdersLeft})`, badgeX + 74, layout.counterY);
+      badgeX += 156;
+    }
+    if (state.dailyBuffs.luckyCharm) {
+      drawComicBox(ctx, { x: badgeX, y: layout.counterY - 14, w: 122, h: 28 }, '#DCFCE7', 7, 2, 2.5);
+      ctx.font = '800 11px "Bricolage Grotesque", sans-serif';
+      ctx.fillStyle = '#15803D';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🍀 +10% Tiền Bo', badgeX + 61, layout.counterY);
+      badgeX += 130;
+    }
+    if (state.dailyBuffs.proteinBuff) {
+      drawComicBox(ctx, { x: badgeX, y: layout.counterY - 14, w: 128, h: 28 }, '#FFE4E6', 7, 2, 2.5);
+      ctx.font = '800 11px "Bricolage Grotesque", sans-serif';
+      ctx.fillStyle = '#BE123C';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('💪 Chạy Nhanh!', badgeX + 64, layout.counterY);
+      badgeX += 136;
+    }
+    if (state.dailyBuffs.landladySpeedBuff) {
+      drawComicBox(ctx, { x: badgeX, y: layout.counterY - 14, w: 148, h: 28 }, '#FEF3C7', 7, 2, 2.5);
+      ctx.font = '800 11px "Bricolage Grotesque", sans-serif';
+      ctx.fillStyle = '#92400E';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🧹 Bà Chủ Nhà +Speed', badgeX + 74, layout.counterY);
+    }
   }
 
-  const chairBaseX = w - 46;
-  for (let c = 0; c < state.redChairs; c++) {
-    drawRedPlasticChair(ctx, chairBaseX - c * 11, layout.counterY - 5 - c * 5, 0.85, 0);
+  if (layout.waitingZoneRect) {
+    const wz = layout.waitingZoneRect;
+    const chairPill: Rect = {
+      x: wz.x + wz.w - 60,
+      y: wz.y + 3,
+      w: 60,
+      h: Math.max(18, wz.h - 6),
+    };
+    drawComicBox(ctx, chairPill, '#FFE4E6', 7, 1, 1.5);
+    drawRedPlasticChair(ctx, chairPill.x + 14, chairPill.y + chairPill.h * 0.5 + 1, 0.45, 0);
+    ctx.font = '800 10px "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = '#9F1239';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`Ghế ${state.redChairs}`, chairPill.x + chairPill.w - 5, chairPill.y + chairPill.h * 0.5 + 0.5);
+  } else {
+    const chairBaseX = w - 46;
+    for (let c = 0; c < state.redChairs; c++) {
+      drawRedPlasticChair(ctx, chairBaseX - c * 11, layout.counterY - 5 - c * 5, 0.85, 0);
+    }
+    ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = '#9F1239';
+    ctx.textAlign = 'right';
+    ctx.fillText(`Ghế Nhựa Đỏ (${state.redChairs})`, w - 18, layout.counterY + 36);
   }
-  ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
-  ctx.fillStyle = '#9F1239';
-  ctx.textAlign = 'right';
-  ctx.fillText(`Ghế Nhựa Đỏ (${state.redChairs})`, w - 18, layout.counterY + 36);
 
   if (state.bossFight.active) {
     renderBossFightStation(ctx, state, layout);
   } else if (state.flowRhythm.active) {
     renderFlowRhythmStation(ctx, state, layout);
   } else {
-    const stepNames: { key: PrepStep; label: string }[] =
-      state.dishType === 'CUON'
-        ? [
-            { key: 'TOPPINGS', label: '1. Trải Topping' },
-            { key: 'SEASONING', label: '2. Chanh & Sa Tế' },
-            { key: 'ROLLING', label: '3. Cuốn Bánh' },
-            { key: 'CUTTING', label: '4. Cắt Tự Do & Giao' },
-          ]
-        : [
-            { key: 'CUTTING', label: '1. Cắt Bánh' },
-            { key: 'TOPPINGS', label: '2. Bỏ Topping' },
-            { key: 'SEASONING', label: '3. Chanh & Sa Tế' },
-            { key: 'SHAKING', label: '4. Lắc & Giao' },
-          ];
+    if (isCompactCuon && layout.stepBarRect) {
+      const sb = layout.stepBarRect;
+      drawComicBox(ctx, sb, '#FFFDF5', 10, 2, 2);
+      const cuonSteps: { key: PrepStep; text: string }[] = [
+        { key: 'TOPPINGS', text: 'Bước 1/4 · Rải topping' },
+        { key: 'SEASONING', text: 'Bước 2/4 · Nêm gia vị' },
+        { key: 'ROLLING', text: 'Bước 3/4 · Cuốn bánh' },
+        { key: 'CUTTING', text: 'Bước 4/4 · Cắt & giao' },
+      ];
+      const activeIdx = Math.max(0, cuonSteps.findIndex((s) => s.key === state.prepStep));
+      const dotSize = 20;
+      const dotGap = 4;
+      const dotsStartX = sb.x + 8;
+      const dotY = sb.y + (sb.h - dotSize) * 0.5;
 
-    const isPortrait = layout.isCompact;
-    ctx.font = isPortrait
-      ? '800 9px "Plus Jakarta Sans", sans-serif'
-      : '700 14px "Plus Jakarta Sans", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const stepY = layout.counterY + (isPortrait ? 34 : 42);
-    const totalStepSpan = Math.max(0, Math.min(isPortrait ? w - 48 : 580, w - (isPortrait ? 48 : 80)));
-    const compactLabels = ['1. Cắt', '2. Topping', '3. Nêm', '4. Lắc'];
-    stepNames.forEach((s, idx) => {
-      const sx = w * 0.5 - totalStepSpan * 0.5 + (idx / 3) * totalStepSpan;
-      const isActive = state.prepStep === s.key || (state.prepStep === 'READY' && idx === 3);
-      ctx.fillStyle = isActive ? '#D97706' : '#64748B';
-      ctx.fillText(isPortrait ? compactLabels[idx] : s.label, sx, stepY, isPortrait ? Math.max(48, totalStepSpan / 3) : undefined);
-      if (isActive) {
-        const tw = Math.min(ctx.measureText(isPortrait ? compactLabels[idx] : s.label).width, isPortrait ? 42 : 580);
-        ctx.fillRect(sx - tw * 0.5, stepY + (isPortrait ? 8 : 11), tw, 3);
-      }
-    });
+      cuonSteps.forEach((_, idx) => {
+        const dx = dotsStartX + idx * (dotSize + dotGap);
+        const done = idx < activeIdx;
+        const active = idx === activeIdx;
+        const bg = done ? '#10B981' : active ? '#F59E0B' : '#E2E8F0';
+        ctx.fillStyle = bg;
+        roundRectPath(ctx, dx, dotY, dotSize, dotSize, 6);
+        ctx.fill();
+        ctx.strokeStyle = active ? INK : done ? '#059669' : '#94A3B8';
+        ctx.lineWidth = active ? 2 : 1.2;
+        ctx.stroke();
+
+        ctx.font = '800 11px "Bricolage Grotesque", sans-serif';
+        ctx.fillStyle = done ? '#FFFFFF' : active ? INK : '#64748B';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(done ? '✓' : `${idx + 1}`, dx + dotSize * 0.5, dotY + dotSize * 0.5 + 0.5);
+      });
+
+      const labelX = dotsStartX + 4 * dotSize + 3 * dotGap + 10;
+      const labelMaxW = Math.max(40, sb.x + sb.w - 8 - labelX);
+      ctx.font = MOBILE_STEP_LABEL_FONT;
+      ctx.fillStyle = INK;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(cuonSteps[activeIdx].text, labelX, sb.y + sb.h * 0.5 + 0.5, labelMaxW);
+    } else {
+      const stepNames: { key: PrepStep; label: string }[] =
+        state.dishType === 'CUON'
+          ? [
+              { key: 'TOPPINGS', label: '1. Trải Topping' },
+              { key: 'SEASONING', label: '2. Chanh & Sa Tế' },
+              { key: 'ROLLING', label: '3. Cuốn Bánh' },
+              { key: 'CUTTING', label: '4. Cắt Tự Do & Giao' },
+            ]
+          : [
+              { key: 'CUTTING', label: '1. Cắt Bánh' },
+              { key: 'TOPPINGS', label: '2. Bỏ Topping' },
+              { key: 'SEASONING', label: '3. Chanh & Sa Tế' },
+              { key: 'SHAKING', label: '4. Lắc & Giao' },
+            ];
+
+      const isPortrait = layout.isCompact;
+      ctx.font = isPortrait
+        ? '800 9px "Plus Jakarta Sans", sans-serif'
+        : '700 14px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const stepY = layout.counterY + (isPortrait ? 34 : 42);
+      const totalStepSpan = Math.max(0, Math.min(isPortrait ? w - 48 : 580, w - (isPortrait ? 48 : 80)));
+      const compactLabels = ['1. Cắt', '2. Topping', '3. Nêm', '4. Lắc'];
+      stepNames.forEach((s, idx) => {
+        const sx = w * 0.5 - totalStepSpan * 0.5 + (idx / 3) * totalStepSpan;
+        const isActive = state.prepStep === s.key || (state.prepStep === 'READY' && idx === 3);
+        ctx.fillStyle = isActive ? '#D97706' : '#64748B';
+        ctx.fillText(isPortrait ? compactLabels[idx] : s.label, sx, stepY, isPortrait ? Math.max(48, totalStepSpan / 3) : undefined);
+        if (isActive) {
+          const tw = Math.min(ctx.measureText(isPortrait ? compactLabels[idx] : s.label).width, isPortrait ? 42 : 580);
+          ctx.fillRect(sx - tw * 0.5, stepY + (isPortrait ? 8 : 11), tw, 3);
+        }
+      });
+    }
 
     if (state.order) {
       if (state.dishType === 'CUON') {
@@ -1817,24 +2132,31 @@ function renderCookingPhase(
       ctx.arc(dx, dy, 26 + (d % 4) * 14, 0, Math.PI * 2);
       ctx.fill();
     }
-    const dustBannerW = Math.min(540, w - 40);
+    const dustBannerW = Math.min(540, w - 24);
+    ctx.font = w < 520 ? '800 11px "Bricolage Grotesque", sans-serif' : '800 13px "Bricolage Grotesque", sans-serif';
+    const dustLines = wrapText(
+      ctx,
+      '🧹 BÀ CHỦ NHÀ ĐANG QUÉT BỤI! Bấm vào bả để hối lộ 1 Bánh Tráng (+Tốc Độ Chạy Trật Tự)!',
+      dustBannerW - 18
+    ).slice(0, 2);
+    const dustBoxH = dustLines.length > 1 ? 48 : 42;
     drawComicBox(
       ctx,
-      { x: w * 0.5 - dustBannerW * 0.5, y: layout.counterY + 56, w: dustBannerW, h: 42 },
+      { x: w * 0.5 - dustBannerW * 0.5, y: layout.counterY + 56, w: dustBannerW, h: dustBoxH },
       '#78350F',
       10,
       3,
       2.5
     );
-    ctx.font = '800 13px "Bricolage Grotesque", sans-serif';
     ctx.fillStyle = '#FEF3C7';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(
-      '🧹 BÀ CHỦ NHÀ ĐANG QUÉT BỤI! Bấm vào bả để hối lộ 1 Bánh Tráng (+Tốc Độ Chạy Trật Tự)!',
-      w * 0.5,
-      layout.counterY + 77
-    );
+    if (dustLines.length === 1) {
+      ctx.fillText(dustLines[0], w * 0.5, layout.counterY + 56 + dustBoxH * 0.5, dustBannerW - 16);
+    } else {
+      ctx.fillText(dustLines[0], w * 0.5, layout.counterY + 56 + 15, dustBannerW - 16);
+      ctx.fillText(dustLines[1], w * 0.5, layout.counterY + 56 + 33, dustBannerW - 16);
+    }
     ctx.restore();
   }
 
@@ -1854,24 +2176,31 @@ function renderCookingPhase(
       ctx.stroke();
     }
 
-    const bannerW = Math.min(540, w - 40);
+    const bannerW = Math.min(540, w - 24);
+    ctx.font = w < 520 ? '800 12px "Bricolage Grotesque", sans-serif' : '800 15px "Bricolage Grotesque", sans-serif';
+    const rainLines = wrapText(
+      ctx,
+      `⛈️ MƯA SÀI GÒN! Bấm vào TẤT CẢ khách trong ${state.rainEvent.timeLeft.toFixed(1)}s để phát Áo Mưa Nilon!`,
+      bannerW - 18
+    ).slice(0, 2);
+    const rainBoxH = rainLines.length > 1 ? 52 : 46;
     drawComicBox(
       ctx,
-      { x: w * 0.5 - bannerW * 0.5, y: layout.counterY + 56, w: bannerW, h: 48 },
+      { x: w * 0.5 - bannerW * 0.5, y: layout.counterY + 56, w: bannerW, h: rainBoxH },
       '#0EA5E9',
       12,
       4,
       3
     );
-    ctx.font = '800 15px "Bricolage Grotesque", sans-serif';
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(
-      `⛈️ MƯA SÀI GÒN! Bấm vào TẤT CẢ khách trong ${state.rainEvent.timeLeft.toFixed(1)}s để phát Áo Mưa Nilon!`,
-      w * 0.5,
-      layout.counterY + 80
-    );
+    if (rainLines.length === 1) {
+      ctx.fillText(rainLines[0], w * 0.5, layout.counterY + 56 + rainBoxH * 0.5, bannerW - 16);
+    } else {
+      ctx.fillText(rainLines[0], w * 0.5, layout.counterY + 56 + 16, bannerW - 16);
+      ctx.fillText(rainLines[1], w * 0.5, layout.counterY + 56 + 36, bannerW - 16);
+    }
   }
 
   // Mechanic 1: The "Ripped Bag" Slow-Motion QTE Overlay
@@ -2141,21 +2470,22 @@ function drawElectricPoleNpc(
   ctx.stroke();
 
   // Colorful Loan Shark Flyers ("VAY NÓNG 20K") pasted on the pole
-  const flyer1: Rect = { x: poleX - 22, y: r.y + 34, w: 44, h: 32 };
+  const compactPole = r.h < 105;
+  const flyer1: Rect = { x: poleX - 22, y: r.y + (compactPole ? 18 : 28), w: 44, h: compactPole ? 26 : 30 };
   drawComicBox(ctx, flyer1, hovered ? '#FEF08A' : '#FDE047', 4, 2, 2);
   ctx.font = '800 8px "Bricolage Grotesque", sans-serif';
   ctx.fillStyle = '#DC2626';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('VAY NÓNG', poleX, flyer1.y + 10);
+  ctx.fillText('VAY NÓNG', poleX, flyer1.y + flyer1.h * 0.34, flyer1.w - 4);
   ctx.fillStyle = INK;
-  ctx.fillText(loanDebt > 0 ? `NỢ ${Math.round(loanDebt / 1000)}K` : '20.000đ', poleX, flyer1.y + 22);
+  ctx.fillText(loanDebt > 0 ? `NỢ ${Math.round(loanDebt / 1000)}K` : '20.000đ', poleX, flyer1.y + flyer1.h * 0.72, flyer1.w - 4);
 
-  const flyer2: Rect = { x: poleX - 18, y: r.y + 74, w: 38, h: 24 };
+  const flyer2: Rect = { x: poleX - 19, y: flyer1.y + flyer1.h + (compactPole ? 4 : 7), w: 38, h: compactPole ? 19 : 23 };
   drawComicBox(ctx, flyer2, '#FFE4E6', 3, 1.5, 2);
   ctx.font = '800 7.5px "Bricolage Grotesque", sans-serif';
   ctx.fillStyle = '#9F1239';
-  ctx.fillText('0 THẾ CHẤP', poleX, flyer2.y + 12);
+  ctx.fillText('0 THẾ CHẤP', poleX, flyer2.y + flyer2.h * 0.5, flyer2.w - 4);
 
   if (hovered) {
     const pulse = 1 + Math.sin(time * 12) * 0.05;
@@ -2165,7 +2495,7 @@ function drawElectricPoleNpc(
     drawComicBox(ctx, { x: -42, y: -12, w: 84, h: 22 }, '#111318', 6, 1, 2);
     ctx.font = '800 9.5px "Bricolage Grotesque", sans-serif';
     ctx.fillStyle = '#FACC15';
-    ctx.fillText('⚡ Bấm Vay Nóng', 0, -1);
+    ctx.fillText('⚡ Bấm Vay Nóng', 0, -1, 78);
     ctx.restore();
   }
   ctx.restore();
@@ -2239,13 +2569,14 @@ function drawLoanSharkThugs(
   ctx.fillStyle = '#E11D48';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('🕶️ ĐÀN EM ĐÒI NỢ ÁN NGỮ (-50% KHÁCH)!', cardX + cardW * 0.5, layout.counterY + 82);
+  ctx.fillText('🕶️ ĐÀN EM ĐÒI NỢ ÁN NGỮ (-50% KHÁCH)!', cardX + cardW * 0.5, layout.counterY + 82, cardW - 14);
   ctx.font = '700 12px "Plus Jakarta Sans", sans-serif';
   ctx.fillStyle = INK;
   ctx.fillText(
     `Bấm Cột Điện góc trái để trả ${state.loanDebt.toLocaleString('vi-VN')}đ!`,
     cardX + cardW * 0.5,
-    layout.counterY + 108
+    layout.counterY + 108,
+    cardW - 14
   );
   ctx.restore();
 }
@@ -2850,6 +3181,11 @@ function renderToppingTrays(ctx: CanvasRenderingContext2D, state: RenderState, l
     nuoc_cot_dua: 'nuoc_cot_dua',
   };
 
+  const isCompactCuon = layout.isCompact && state.dishType === 'CUON' && Boolean(layout.stepBarRect);
+  const firstPendingId = isCompactCuon && state.compactTutorialActive
+    ? TOPPINGS.find((item) => (state.addedToppings[item.id] || 0) < (state.order?.requiredToppings[item.id] ?? 0))?.id ?? null
+    : null;
+
   for (const t of TOPPINGS) {
     const rect = layout.trayRects[t.id];
     const count = state.addedToppings[t.id] || 0;
@@ -2875,7 +3211,51 @@ function renderToppingTrays(ctx: CanvasRenderingContext2D, state: RenderState, l
 
     drawComicBox(ctx, drawRect, trayBg, 12, 3, 2.5);
 
-    if (drawRect.h < 44) {
+    if (isCompactCuon && drawRect.h >= MOBILE_MIN_TAP) {
+      const iconX = count > 0 ? drawRect.x + drawRect.w * 0.34 : drawRect.x + drawRect.w * 0.5;
+      drawToppingIcon(ctx, t.id, iconX, drawRect.y + 15, 0.58);
+
+      if (!levelLocked && stock !== null && stock <= 2) {
+        const tag = stock <= 0 ? 'Hết' : `còn ${stock}`;
+        ctx.font = '800 8px "Bricolage Grotesque", sans-serif';
+        const tagW = Math.min(drawRect.w - 8, ctx.measureText(tag).width + 8);
+        ctx.fillStyle = '#E11D48';
+        roundRectPath(ctx, drawRect.x + 3, drawRect.y + 3, tagW, 13, 4);
+        ctx.fill();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(tag, drawRect.x + 3 + tagW * 0.5, drawRect.y + 9.5, tagW - 4);
+      }
+
+      ctx.font = MOBILE_TRAY_NAME_FONT;
+      ctx.fillStyle = levelLocked || outOfStock ? '#64748B' : INK;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(t.shortName, drawRect.x + drawRect.w * 0.5, drawRect.y + drawRect.h - 20, drawRect.w - 6);
+
+      ctx.font = '800 10px "JetBrains Mono", monospace';
+      if (levelLocked) {
+        ctx.fillStyle = '#7C3AED';
+        ctx.fillText(`🔒 Cấp ${unlockLevel}`, drawRect.x + drawRect.w * 0.5, drawRect.y + drawRect.h - 8, drawRect.w - 6);
+      } else if (need > 0) {
+        ctx.fillStyle = count > need ? '#E11D48' : count === need ? '#059669' : '#B45309';
+        ctx.fillText(`${count}/${need}`, drawRect.x + drawRect.w * 0.5, drawRect.y + drawRect.h - 8, drawRect.w - 6);
+      } else if (count > 0) {
+        ctx.fillStyle = '#E11D48';
+        ctx.fillText(`×${count}`, drawRect.x + drawRect.w * 0.5, drawRect.y + drawRect.h - 8, drawRect.w - 6);
+      }
+
+      if (firstPendingId === t.id && !outOfStock && !levelLocked) {
+        const pulseAlpha = 0.55 + 0.4 * Math.sin(state.time * 8);
+        ctx.save();
+        ctx.strokeStyle = `rgba(245, 158, 11, ${pulseAlpha})`;
+        ctx.lineWidth = 3;
+        roundRectPath(ctx, drawRect.x - 2, drawRect.y - 2, drawRect.w + 4, drawRect.h + 4, 14);
+        ctx.stroke();
+        ctx.restore();
+      }
+    } else if (drawRect.h < 44) {
       // Short landscape and tiny portrait: icon on the left, two concise text rows on the right.
       const iconX = drawRect.x + Math.min(14, drawRect.w * 0.23);
       const textX = drawRect.x + Math.min(27, drawRect.w * 0.42);
@@ -3060,6 +3440,8 @@ function renderCuonStation(ctx: CanvasRenderingContext2D, state: RenderState, la
       ctx.restore();
     }
 
+    const isCompactCuon = layout.isCompact && Boolean(layout.stepBarRect);
+
     if (state.prepStep === 'TOPPINGS') {
       renderToppingTrays(ctx, state, layout);
       const hasToppings = TOPPINGS.some((t) => (state.addedToppings[t.id] || 0) > 0);
@@ -3072,68 +3454,142 @@ function renderCuonStation(ctx: CanvasRenderingContext2D, state: RenderState, la
       drawButton(
         ctx,
         getToppingUndoRect(layout),
-        hasToppings ? (layout.width < 360 ? '↶ Rút' : '↶ Hoàn tác') : (layout.width < 360 ? 'Chưa có' : 'Chưa có món'),
+        isCompactCuon
+          ? (hasToppings ? '↶' : '↶')
+          : hasToppings
+          ? (layout.width < 360 ? '↶ Rút' : '↶ Hoàn tác')
+          : (layout.width < 360 ? 'Chưa có' : 'Chưa có món'),
         hasToppings ? '#DBEAFE' : '#E2E8F0',
-        INK,
-        hasToppings && state.hoverSecondary
+        hasToppings ? INK : '#64748B',
+        hasToppings && state.hoverSecondary,
+        isCompactCuon && !hasToppings
       );
+      const primRect = { ...layout.primaryBtn, x: layout.isCompact ? layout.primaryBtn.x : w * 0.5 - layout.primaryBtn.w * 0.5 };
       drawButton(
         ctx,
-        { ...layout.primaryBtn, x: layout.isCompact ? layout.primaryBtn.x : w * 0.5 - layout.primaryBtn.w * 0.5 },
-        (layout.isCompact ? 'Xong Topping →' : 'Xong Topping · Nêm Gia Vị →'),
+        primRect,
+        isCompactCuon ? 'Xong topping →' : (layout.isCompact ? 'Xong Topping →' : 'Xong Topping · Nêm Gia Vị →'),
         '#F59E0B',
         INK,
         state.hoverPrimary
       );
-    } else if (state.prepStep === 'SEASONING') {
-      renderSeasoningPanel(ctx, state, layout, 'Sang Bước Cuốn Bánh →');
-    } else if (state.prepStep === 'ROLLING') {
-      const barW = 280;
-      const barRect: Rect = {
-        x: w * 0.5 - barW * 0.5,
-        y: layout.matRect.y - 34,
-        w: barW,
-        h: 18,
-      };
-      drawComicBox(ctx, barRect, '#E2E8F0', 8, 2, 2.5);
-      if (p > 0.02) {
-        ctx.fillStyle = p >= 1 ? '#10B981' : '#F59E0B';
-        roundRectPath(ctx, barRect.x + 2, barRect.y + 2, (barRect.w - 4) * p, barRect.h - 4, 6);
-        ctx.fill();
+      if (isCompactCuon && state.compactTutorialActive) {
+        const allReqMet = TOPPINGS.every((item) => (state.addedToppings[item.id] || 0) >= (state.order?.requiredToppings[item.id] ?? 0));
+        if (allReqMet) {
+          const pulseAlpha = 0.55 + 0.4 * Math.sin(time * 8);
+          ctx.save();
+          ctx.strokeStyle = `rgba(16, 185, 129, ${pulseAlpha})`;
+          ctx.lineWidth = 4;
+          roundRectPath(ctx, primRect.x - 3, primRect.y - 3, primRect.w + 6, primRect.h + 6, 14);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
+    } else if (state.prepStep === 'SEASONING') {
+      renderSeasoningPanel(ctx, state, layout, isCompactCuon ? 'Sang cuốn bánh →' : 'Sang Bước Cuốn Bánh →');
+    } else if (state.prepStep === 'ROLLING') {
+      if (isCompactCuon) {
+        const barW = Math.min(280, w - 32);
+        const barY = Math.min(layout.rollBtn.y - 44, layout.matRect.y + layout.matRect.h + 10);
+        const barRect: Rect = {
+          x: w * 0.5 - barW * 0.5,
+          y: barY,
+          w: barW,
+          h: 16,
+        };
+        drawComicBox(ctx, barRect, '#E2E8F0', 8, 2, 2);
+        if (p > 0.02) {
+          ctx.fillStyle = p >= 1 ? '#10B981' : '#F59E0B';
+          roundRectPath(ctx, barRect.x + 2, barRect.y + 2, (barRect.w - 4) * p, barRect.h - 4, 6);
+          ctx.fill();
+        }
 
-      ctx.font = '800 15px "Bricolage Grotesque", sans-serif';
-      ctx.fillStyle = INK;
-      ctx.textAlign = 'center';
-      ctx.fillText(
-        `Cuộn con lăn chuột hoặc vuốt lên trên mành tre để cuốn (${Math.round(state.rollProgress)}%)`,
-        w * 0.5,
-        barRect.y - 16
-      );
+        ctx.font = '800 13px "Bricolage Grotesque", sans-serif';
+        ctx.fillStyle = INK;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`Vuốt lên để cuốn (${Math.round(state.rollProgress)}%)`, w * 0.5, barRect.y + barRect.h + 5, w - 24);
 
-      const arrowOffset = ((time * 45) % 24) - 12;
-      ctx.save();
-      ctx.translate(w * 0.5, layout.matRect.y + layout.matRect.h * 0.5 - arrowOffset);
-      ctx.fillStyle = 'rgba(245, 158, 11, 0.9)';
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(0, -18);
-      ctx.lineTo(16, 2);
-      ctx.lineTo(6, 2);
-      ctx.lineTo(6, 18);
-      ctx.lineTo(-6, 18);
-      ctx.lineTo(-6, 2);
-      ctx.lineTo(-16, 2);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
+        const arrowOffset = ((time * 45) % 24) - 12;
+        ctx.save();
+        ctx.translate(w * 0.5, layout.matRect.y + layout.matRect.h * 0.5 - arrowOffset);
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.92)';
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -18);
+        ctx.lineTo(16, 2);
+        ctx.lineTo(6, 2);
+        ctx.lineTo(6, 18);
+        ctx.lineTo(-6, 18);
+        ctx.lineTo(-6, 2);
+        ctx.lineTo(-16, 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
 
-      drawButton(ctx, layout.rollBtn, 'Cuốn Nhanh (Hoặc Cuộn Chuột)', '#F59E0B', INK, state.hoverRoll);
+        if (state.showRollHint || state.compactTutorialActive) {
+          const pillW = Math.min(184, w - 40);
+          const pillRect: Rect = { x: w * 0.5 - pillW * 0.5, y: layout.matRect.y + 8, w: pillW, h: 24 };
+          drawComicBox(ctx, pillRect, '#FEF08A', 8, 2, 2);
+          ctx.font = '800 12px "Bricolage Grotesque", sans-serif';
+          ctx.fillStyle = '#92400E';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('👆 Vuốt lên để cuốn', w * 0.5, pillRect.y + 12);
+        }
+
+        drawButton(ctx, layout.rollBtn, 'Cuốn Nhanh', '#F59E0B', INK, state.hoverRoll);
+      } else {
+        const barW = 280;
+        const barRect: Rect = {
+          x: w * 0.5 - barW * 0.5,
+          y: layout.matRect.y - 34,
+          w: barW,
+          h: 18,
+        };
+        drawComicBox(ctx, barRect, '#E2E8F0', 8, 2, 2.5);
+        if (p > 0.02) {
+          ctx.fillStyle = p >= 1 ? '#10B981' : '#F59E0B';
+          roundRectPath(ctx, barRect.x + 2, barRect.y + 2, (barRect.w - 4) * p, barRect.h - 4, 6);
+          ctx.fill();
+        }
+
+        ctx.font = '800 15px "Bricolage Grotesque", sans-serif';
+        ctx.fillStyle = INK;
+        ctx.textAlign = 'center';
+        ctx.fillText(
+          `Cuộn con lăn chuột hoặc vuốt lên trên mành tre để cuốn (${Math.round(state.rollProgress)}%)`,
+          w * 0.5,
+          barRect.y - 16,
+          w - 28
+        );
+
+        const arrowOffset = ((time * 45) % 24) - 12;
+        ctx.save();
+        ctx.translate(w * 0.5, layout.matRect.y + layout.matRect.h * 0.5 - arrowOffset);
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.9)';
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -18);
+        ctx.lineTo(16, 2);
+        ctx.lineTo(6, 2);
+        ctx.lineTo(6, 18);
+        ctx.lineTo(-6, 18);
+        ctx.lineTo(-6, 2);
+        ctx.lineTo(-16, 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        drawButton(ctx, layout.rollBtn, 'Cuốn Nhanh (Hoặc Cuộn Chuột)', '#F59E0B', INK, state.hoverRoll);
+      }
     }
   } else {
-    // CUTTING step for Bánh Tráng Cuốn: FREE 2D polygon slicing (horizontal, vertical, diagonal!)
+    const isCompactCuon = layout.isCompact && Boolean(layout.stepBarRect);
     const boardRect = layout.cuonCutBoardRect;
     drawComicBox(ctx, boardRect, '#E6C79C', 24, 6, 3);
     ctx.strokeStyle = 'rgba(146, 64, 14, 0.16)';
@@ -3151,13 +3607,104 @@ function renderCuonStation(ctx: CanvasRenderingContext2D, state: RenderState, la
 
     const target = state.order?.targetSlices ?? 4;
     const count = state.slices.length;
+
+    if (isCompactCuon) {
+      const guides: CutGuide[] = buildCutGuides(layout.rollRect, target);
+      const cutMask = state.cutGuideDone ?? [];
+      const nextGuideIdx = guides.findIndex((g) => !cutMask[g.index]);
+      const allDone = guides.length === 0 || nextGuideIdx === -1 || count === target;
+
+      for (const g of guides) {
+        if (cutMask[g.index]) continue;
+        const isNext = g.index === nextGuideIdx;
+        ctx.save();
+        if (isNext) {
+          const glowAlpha = 0.28 + 0.28 * Math.sin(time * 7);
+          ctx.strokeStyle = CUT_GUIDE_GLOW;
+          ctx.globalAlpha = glowAlpha;
+          ctx.lineWidth = 8;
+          ctx.beginPath();
+          ctx.moveTo(g.a.x, g.a.y);
+          ctx.lineTo(g.b.x, g.b.y);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+        ctx.strokeStyle = isNext ? '#B45309' : CUT_GUIDE_STROKE;
+        ctx.lineWidth = isNext ? 3 : 2;
+        ctx.setLineDash([6, 5]);
+        ctx.beginPath();
+        ctx.moveTo(g.a.x, g.a.y);
+        ctx.lineTo(g.b.x, g.b.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.font = '800 13px "Bricolage Grotesque", sans-serif';
+        ctx.fillStyle = isNext ? '#B45309' : '#78350F';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('✂', g.a.x, g.a.y - 2);
+
+        if (isNext && state.compactTutorialActive) {
+          const r = 16 + Math.sin(time * 8) * 3;
+          ctx.strokeStyle = '#F59E0B';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(g.mid.x, g.mid.y, r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      const statusBanner: Rect = {
+        x: boardRect.x + 14,
+        y: boardRect.y + 8,
+        w: Math.max(80, boardRect.w - 28),
+        h: 22,
+      };
+      if (allDone) {
+        drawComicBox(ctx, statusBanner, '#DCFCE7', 8, 1, 1.8);
+        ctx.font = '800 12px "Bricolage Grotesque", sans-serif';
+        ctx.fillStyle = CUT_GUIDE_DONE_COLOR;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`✓ Đủ ${target} khúc! Bấm Giao khách ✓`, boardRect.x + boardRect.w * 0.5, statusBanner.y + 11, statusBanner.w - 10);
+      } else {
+        drawComicBox(ctx, statusBanner, '#FFFDF5', 8, 1, 1.5);
+        ctx.font = '800 12px "Bricolage Grotesque", sans-serif';
+        ctx.fillStyle = INK;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`Chạm hoặc vuốt vạch cắt (${count}/${target} khúc)`, boardRect.x + boardRect.w * 0.5, statusBanner.y + 11, statusBanner.w - 10);
+      }
+
+      drawButton(
+        ctx,
+        layout.primaryBtn,
+        'Giao khách ✓',
+        allDone ? '#10B981' : '#F59E0B',
+        allDone ? '#FFFFFF' : INK,
+        state.hoverPrimary
+      );
+      if (allDone && state.compactTutorialActive) {
+        const pulseAlpha = 0.55 + 0.4 * Math.sin(time * 8);
+        ctx.save();
+        ctx.strokeStyle = `rgba(16, 185, 129, ${pulseAlpha})`;
+        ctx.lineWidth = 4;
+        roundRectPath(ctx, layout.primaryBtn.x - 3, layout.primaryBtn.y - 3, layout.primaryBtn.w + 6, layout.primaryBtn.h + 6, 14);
+        ctx.stroke();
+        ctx.restore();
+      }
+      return;
+    }
+
     ctx.font = '800 17px "Bricolage Grotesque", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillStyle = count === target ? '#059669' : count > target ? '#E11D48' : INK;
     ctx.fillText(
       `Cắt tự do ngang, dọc hoặc chéo thành ${target} khúc (Hiện tại: ${count} khúc)`,
       layout.boardCenterX,
-      boardRect.y - 16
+      boardRect.y - 16,
+      w - 28
     );
 
     drawButton(ctx, layout.secondaryBtn, 'Cắt Lại', '#FFFFFF', INK, state.hoverSecondary);
@@ -3216,10 +3763,10 @@ function renderTronStation(ctx: CanvasRenderingContext2D, state: RenderState, la
       drawComicBox(ctx, banner, '#FFFDF5', 6, 1, 1.5);
       ctx.fillText(instruction, layout.boardCenterX, banner.y + banner.h * 0.5, banner.w - 8);
     } else {
-      ctx.fillText(instruction, layout.boardCenterX, boardRect.y - 16);
+      ctx.fillText(instruction, layout.boardCenterX, boardRect.y - 16, w - 28);
     }
 
-    drawButton(ctx, layout.secondaryBtn, 'Cắt Lại', '#FFFFFF', INK, state.hoverSecondary);
+    drawButton(ctx, layout.secondaryBtn, layout.secondaryBtn.w < 64 ? 'Cắt lại' : 'Cắt Lại', '#FFFFFF', INK, state.hoverSecondary);
     drawButton(
       ctx,
       layout.primaryBtn,
@@ -3366,7 +3913,7 @@ function renderTronStation(ctx: CanvasRenderingContext2D, state: RenderState, la
     } else if (state.prepStep === 'SEASONING') {
       renderSeasoningPanel(ctx, state, layout, 'Sang Bước Lắc Đều →');
     } else if (state.prepStep === 'SHAKING' || state.prepStep === 'READY') {
-      const meterW = 280;
+      const meterW = Math.min(280, w - 32);
       const meterRect: Rect = {
         x: w * 0.5 - meterW * 0.5,
         y: layout.shakeBtn.y - 34,
@@ -3381,7 +3928,7 @@ function renderTronStation(ctx: CanvasRenderingContext2D, state: RenderState, la
         ctx.fill();
       }
 
-      ctx.font = '700 14px "Plus Jakarta Sans", sans-serif';
+      ctx.font = w < 420 ? '700 12px "Plus Jakarta Sans", sans-serif' : '700 14px "Plus Jakarta Sans", sans-serif';
       ctx.fillStyle = INK;
       ctx.textAlign = 'center';
       ctx.fillText(
@@ -3391,7 +3938,8 @@ function renderTronStation(ctx: CanvasRenderingContext2D, state: RenderState, la
           ? '⚙️ Máy Trộn Tự Chế đang tự trộn tốc độ x2 (hoặc bấm phụ)!'
           : 'Bấm liên tục nút Lắc Đều hoặc lắc chuột qua lại trên tô!',
         w * 0.5,
-        meterRect.y - 14
+        meterRect.y - 14,
+        w - 24
       );
 
       if (state.prepStep === 'SHAKING') {
@@ -3417,10 +3965,22 @@ function renderSeasoningPanel(
   nextLabel: string
 ): void {
   const { width: w } = state;
-  const panelX = layout.isCompact ? Math.max(8, layout.limeHoldRect.x - 8) : layout.limeHoldRect.x - 18;
-  const panelRight = layout.isCompact ? Math.min(w - 8, layout.limeBarRect.x + layout.limeBarRect.w + 8) : layout.limeBarRect.x + layout.limeBarRect.w + 18;
-  const panelY = layout.isCompact ? layout.limeHoldRect.y - 8 : layout.limeHoldRect.y - 26;
-  const panelH = layout.isCompact
+  const isCompactPortrait = Boolean(layout.stepBarRect);
+  const isCompactCuon = isCompactPortrait && state.dishType === 'CUON';
+  const panelX = isCompactPortrait
+    ? Math.max(4, layout.limeHoldRect.x - 6)
+    : layout.isCompact
+    ? Math.max(8, layout.limeHoldRect.x - 8)
+    : layout.limeHoldRect.x - 18;
+  const panelRight = isCompactPortrait
+    ? Math.min(w - 4, layout.limeBarRect.x + layout.limeBarRect.w + 6)
+    : layout.isCompact
+    ? Math.min(w - 8, layout.limeBarRect.x + layout.limeBarRect.w + 8)
+    : layout.limeBarRect.x + layout.limeBarRect.w + 18;
+  const panelY = layout.isCompact ? layout.limeHoldRect.y - 6 : layout.limeHoldRect.y - 26;
+  const panelH = isCompactPortrait
+    ? Math.max(layout.chiliHoldRect.y + layout.chiliHoldRect.h, layout.chiliBarRect.y + layout.chiliBarRect.h) - panelY + 8
+    : layout.isCompact
     ? layout.chiliHoldRect.y + layout.chiliHoldRect.h - panelY + 2
     : 192;
   const panelRect: Rect = {
@@ -3431,36 +3991,69 @@ function renderSeasoningPanel(
   };
   drawComicBox(ctx, panelRect, 'rgba(255, 255, 255, 0.96)', 16, 4, 3);
 
+  const limeTarget = state.order?.limeTarget ?? 'VUA';
+  const chiliTarget = state.order?.chiliTarget ?? 'VUA';
+  const limeText = state.limeMeter.locked
+    ? '✓ Đã Vắt Chanh'
+    : state.limeMeter.holding
+    ? 'Đang Vắt...'
+    : isCompactPortrait
+    ? `Giữ Vắt Chanh · ${SEASONING_LABEL[limeTarget]}`
+    : 'Giữ Vắt Chanh';
+  const chiliText = state.chiliMeter.locked
+    ? '✓ Đã Rưới Sa Tế'
+    : state.chiliMeter.holding
+    ? 'Đang Rưới...'
+    : isCompactPortrait
+    ? `Giữ Rưới Sa Tế · ${SEASONING_LABEL[chiliTarget]}`
+    : 'Giữ Rưới Sa Tế';
+
   drawButton(
     ctx,
     layout.limeHoldRect,
-    state.limeMeter.locked ? 'Đã Vắt Chanh' : state.limeMeter.holding ? 'Đang Vắt...' : 'Giữ Vắt Chanh',
+    limeText,
     state.limeMeter.locked ? '#A7F3D0' : '#84CC16',
     INK,
     state.limeMeter.holding
   );
-  drawPowerBar(ctx, layout.limeBarRect, state.limeMeter, state.order?.limeTarget ?? 'VUA', '#84CC16');
+  drawPowerBar(ctx, layout.limeBarRect, state.limeMeter, limeTarget, '#84CC16', isCompactPortrait);
 
   drawButton(
     ctx,
     layout.chiliHoldRect,
-    state.chiliMeter.locked ? 'Đã Rưới Sa Tế' : state.chiliMeter.holding ? 'Đang Rưới...' : 'Giữ Rưới Sa Tế',
+    chiliText,
     state.chiliMeter.locked ? '#FECACA' : '#F97316',
     INK,
     state.chiliMeter.holding
   );
-  drawPowerBar(ctx, layout.chiliBarRect, state.chiliMeter, state.order?.chiliTarget ?? 'VUA', '#EA580C');
+  drawPowerBar(ctx, layout.chiliBarRect, state.chiliMeter, chiliTarget, '#EA580C', isCompactPortrait);
 
   const bothDone = state.limeMeter.locked && state.chiliMeter.locked;
+  const primRect = { ...layout.primaryBtn, x: layout.isCompact ? layout.primaryBtn.x : w * 0.5 - layout.primaryBtn.w * 0.5 };
   drawButton(
     ctx,
-    { ...layout.primaryBtn, x: layout.isCompact ? layout.primaryBtn.x : w * 0.5 - layout.primaryBtn.w * 0.5 },
-    bothDone ? nextLabel : 'Hãy Vắt Chanh & Rưới Sa Tế',
+    primRect,
+    bothDone ? nextLabel : isCompactCuon ? 'Giữ nút Chanh & Sa tế' : 'Hãy Vắt Chanh & Rưới Sa Tế',
     bothDone ? '#10B981' : '#CBD5E1',
     bothDone ? '#FFFFFF' : '#475569',
     state.hoverPrimary && bothDone,
     !bothDone
   );
+
+  if (isCompactCuon && state.compactTutorialActive) {
+    const focusRect = !state.limeMeter.locked
+      ? layout.limeHoldRect
+      : !state.chiliMeter.locked
+      ? layout.chiliHoldRect
+      : primRect;
+    const pulseAlpha = 0.55 + 0.4 * Math.sin(state.time * 8);
+    ctx.save();
+    ctx.strokeStyle = `rgba(245, 158, 11, ${pulseAlpha})`;
+    ctx.lineWidth = 4;
+    roundRectPath(ctx, focusRect.x - 3, focusRect.y - 3, focusRect.w + 6, focusRect.h + 6, 14);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 function renderRaidChase(ctx: CanvasRenderingContext2D, state: RenderState, layout: RaidLayout): void {

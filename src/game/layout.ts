@@ -8,6 +8,13 @@ export interface Rect {
   h: number;
 }
 
+export const MOBILE_MIN_TAP = 48;
+export const MOBILE_TRAY_H = 56;
+export const MOBILE_PRIMARY_H = 56;
+export const MOBILE_UNDO_SIZE = 48;
+export const MOBILE_STEP_BAR_H = 30;
+export const MOBILE_SIDE_PAD = 12;
+
 export interface PrepLayout {
   width: number;
   mobileHubBottom: number;
@@ -17,6 +24,8 @@ export interface PrepLayout {
   customerX: number;
   customerY: number;
   bubbleRect: Rect;
+  stepBarRect?: Rect;
+  waitingZoneRect?: Rect;
   boardCenterX: number;
   boardCenterY: number;
   boardRadius: number;
@@ -65,6 +74,18 @@ export function getActiveCustomerRect(layout: PrepLayout): Rect {
 
 export function getWaitingCustomerRects(layout: PrepLayout, count: number): Rect[] {
   const rects: Rect[] = [];
+  if (layout.waitingZoneRect) {
+    const wz = layout.waitingZoneRect;
+    for (let i = 0; i < count; i++) {
+      rects.push({
+        x: wz.x + i * 54,
+        y: wz.y,
+        w: 50,
+        h: wz.h,
+      });
+    }
+    return rects;
+  }
   for (let i = 0; i < count; i++) {
     const wx = Math.min(layout.width - 70, layout.bubbleRect.x + layout.bubbleRect.w + 48 + i * 74);
     rects.push({
@@ -115,12 +136,14 @@ export function getLotterySellerRect(x: number, y: number): Rect {
 
 export function getElectricPoleRect(layout: PrepLayout): Rect {
   const poleW = layout.width >= 900 ? 64 : 50;
-  const topY = Math.max(64, layout.counterY - 196);
+  const topY = layout.isCompact
+    ? Math.max(layout.mobileHubBottom + 4, layout.counterY - 140)
+    : Math.max(64, layout.counterY - 196);
   return {
     x: 10,
     y: topY,
     w: poleW,
-    h: Math.max(120, layout.counterY - topY - 4),
+    h: Math.max(84, layout.counterY - topY - 4),
   };
 }
 
@@ -199,10 +222,10 @@ export function getQteArrowRects(w: number, h: number): Rect[] {
 export function getMobileHubBaseHeight(w: number, h: number): number {
   const width = Math.max(1, w);
   const height = Math.max(1, h);
-  if (height < width && height <= 520) return 78;
+  if (height < width && height <= 520) return 74;
   if (width <= 320 && height <= 500) return 136;
-  if (width <= 360 || height <= 600) return 170;
-  return 202;
+  if (width <= 360 || height <= 600) return 138;
+  return 146;
 }
 
 export function computePrepLayout(w: number, h: number): PrepLayout {
@@ -404,6 +427,152 @@ export function computePrepLayout(w: number, h: number): PrepLayout {
   const rollBtnW = isCompact ? Math.max(1, Math.min(250, width - 24)) : 250;
   const rollBtn: Rect = { x: (width - rollBtnW) * 0.5, y: btnY, w: rollBtnW, h: 48 };
 
+  if (isCompact && !isShortLandscape) {
+    const portraitBtnH = MOBILE_PRIMARY_H;
+    const portraitBtnY = Math.max(counterY + MOBILE_STEP_BAR_H + 16, height - safeBottom - portraitBtnH - 8);
+    const stepBarRect: Rect = {
+      x: MOBILE_SIDE_PAD,
+      y: counterY + 6,
+      w: Math.max(1, width - MOBILE_SIDE_PAD * 2),
+      h: MOBILE_STEP_BAR_H,
+    };
+
+    const portraitBubbleW = Math.max(1, width - bubbleX - MOBILE_SIDE_PAD - insets.right);
+    const portraitBubbleH = isTinyPortrait
+      ? Math.max(120, counterY - bubbleY - 10)
+      : Math.max(120, counterY - bubbleY - 30);
+    const waitingZoneRect: Rect = {
+      x: bubbleX,
+      y: bubbleY + portraitBubbleH + 2,
+      w: Math.max(1, width - bubbleX - MOBILE_SIDE_PAD - insets.right),
+      h: Math.max(20, counterY - (bubbleY + portraitBubbleH) - 2),
+    };
+
+    const portraitSecSize = isTinyPortrait ? Math.min(MOBILE_UNDO_SIZE, Math.floor((width - 24) * 0.34)) : MOBILE_UNDO_SIZE;
+    const portraitSecBtn: Rect = {
+      x: MOBILE_SIDE_PAD,
+      y: portraitBtnY + (portraitBtnH - portraitSecSize) * 0.5,
+      w: portraitSecSize,
+      h: portraitSecSize,
+    };
+    const portraitPrimBtn: Rect = {
+      x: MOBILE_SIDE_PAD + portraitSecSize + 8,
+      y: portraitBtnY,
+      w: Math.max(1, width - 2 * MOBILE_SIDE_PAD - portraitSecSize - 8),
+      h: portraitBtnH,
+    };
+
+    const portraitTrayRects = {} as Record<ToppingId, Rect>;
+    const cols = 4;
+    const gapX = isTinyPortrait ? 5 : 6;
+    const gapY = isTinyPortrait ? 4 : 6;
+    const sidePad = Math.max(MOBILE_SIDE_PAD, insets.left + 6);
+    const portraitTrayW = Math.max(1, Math.floor((width - sidePad * 2 - gapX * (cols - 1)) / cols));
+    const portraitTrayH = isTinyPortrait || height < 600
+      ? Math.max(28, Math.min(MOBILE_TRAY_H, Math.floor((portraitBtnY - (stepBarRect.y + stepBarRect.h + 28) - gapY - 8) / 2)))
+      : MOBILE_TRAY_H;
+    const gridStartY = portraitBtnY - 8 - (portraitTrayH * 2 + gapY);
+    TOPPINGS.forEach((t, idx) => {
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      portraitTrayRects[t.id] = {
+        x: sidePad + col * (portraitTrayW + gapX),
+        y: gridStartY + row * (portraitTrayH + gapY),
+        w: portraitTrayW,
+        h: portraitTrayH,
+      };
+    });
+
+    const pBoardTop = stepBarRect.y + stepBarRect.h + 8;
+    const pBoardBottom = Math.max(pBoardTop + 24, gridStartY - 8);
+    const pBoardSlotH = Math.max(24, pBoardBottom - pBoardTop);
+    const pBoardRadius = Math.max(1, Math.min(126, (width - 28) / 2.6, pBoardSlotH / 2.08));
+    const pBoardCenterX = width * 0.5;
+    const pBoardCenterY = pBoardTop + pBoardSlotH * 0.5;
+    const pBowlCenterX = width * 0.5;
+    const pBowlCenterY = pBoardCenterY;
+    const pBowlRadius = Math.max(18, Math.min(86, pBoardSlotH * 0.44, (width - 32) * 0.22));
+
+    const pMatW = Math.max(1, Math.min(width - 24, 280));
+    const pMatH = Math.max(36, Math.min(136, pBoardSlotH - 4));
+    const pMatRect: Rect = {
+      x: pBowlCenterX - pMatW * 0.5,
+      y: pBowlCenterY - pMatH * 0.5,
+      w: pMatW,
+      h: pMatH,
+    };
+
+    const pRollW = Math.max(1, Math.min(width - 36, 300));
+    const pRollH = Math.max(36, Math.min(64, pBoardSlotH - 10));
+    const pRollRect: Rect = {
+      x: pBoardCenterX - pRollW * 0.5,
+      y: pBoardCenterY - pRollH * 0.5,
+      w: pRollW,
+      h: pRollH,
+    };
+    const pCuonBoardW = Math.min(width - 24, Math.max(pRollW + 32, pBoardRadius * 2.85));
+    const pCuonCutBoardRect: Rect = {
+      x: (width - pCuonBoardW) * 0.5,
+      y: pBoardCenterY - (pBoardRadius * 2.05) * 0.5,
+      w: pCuonBoardW,
+      h: pBoardRadius * 2.05,
+    };
+
+    const seasonStartY = stepBarRect.y + stepBarRect.h + 8;
+    const availSeasonH = Math.max(40, portraitBtnY - 8 - seasonStartY);
+    const seasonHoldW = Math.max(1, width - MOBILE_SIDE_PAD * 2);
+    const canFullSeason = availSeasonH >= 178;
+    const sBarGap = canFullSeason ? 4 : 2;
+    const sGroupGap = canFullSeason ? 10 : 4;
+    const sBarH = canFullSeason
+      ? 24
+      : Math.max(10, Math.floor((availSeasonH - sBarGap * 2 - sGroupGap) * 0.28));
+    const sHoldH = canFullSeason
+      ? 56
+      : Math.max(14, Math.floor((availSeasonH - sBarGap * 2 - sGroupGap - sBarH * 2) * 0.5));
+
+    const pLimeHoldRect: Rect = { x: MOBILE_SIDE_PAD, y: seasonStartY, w: seasonHoldW, h: sHoldH };
+    const pLimeBarRect: Rect = { x: MOBILE_SIDE_PAD, y: seasonStartY + sHoldH + sBarGap, w: seasonHoldW, h: sBarH };
+    const pChiliHoldY = pLimeBarRect.y + sBarH + sGroupGap;
+    const pChiliHoldRect: Rect = { x: MOBILE_SIDE_PAD, y: pChiliHoldY, w: seasonHoldW, h: sHoldH };
+    const pChiliBarRect: Rect = { x: MOBILE_SIDE_PAD, y: pChiliHoldY + sHoldH + sBarGap, w: seasonHoldW, h: sBarH };
+
+    const pShakeBtnW = Math.max(1, width - MOBILE_SIDE_PAD * 2);
+    const pShakeBtn: Rect = { x: MOBILE_SIDE_PAD, y: portraitBtnY - 58, w: pShakeBtnW, h: 48 };
+    const pRollBtn: Rect = { x: MOBILE_SIDE_PAD, y: portraitBtnY, w: Math.max(1, width - MOBILE_SIDE_PAD * 2), h: MOBILE_PRIMARY_H };
+
+    return {
+      width,
+      height,
+      mobileHubBottom,
+      isCompact,
+      counterY,
+      customerX,
+      customerY,
+      bubbleRect: { x: bubbleX, y: bubbleY, w: portraitBubbleW, h: portraitBubbleH },
+      stepBarRect,
+      waitingZoneRect,
+      boardCenterX: pBoardCenterX,
+      boardCenterY: pBoardCenterY,
+      boardRadius: pBoardRadius,
+      cuonCutBoardRect: pCuonCutBoardRect,
+      matRect: pMatRect,
+      rollRect: pRollRect,
+      bowlCenterX: pBowlCenterX,
+      bowlCenterY: pBowlCenterY,
+      bowlRadius: pBowlRadius,
+      trayRects: portraitTrayRects,
+      primaryBtn: portraitPrimBtn,
+      secondaryBtn: portraitSecBtn,
+      limeHoldRect: pLimeHoldRect,
+      chiliHoldRect: pChiliHoldRect,
+      limeBarRect: pLimeBarRect,
+      chiliBarRect: pChiliBarRect,
+      shakeBtn: pShakeBtn,
+      rollBtn: pRollBtn,
+    };
+  }
+
   return {
     width,
     height,
@@ -435,6 +604,15 @@ export function computePrepLayout(w: number, h: number): PrepLayout {
 }
 export function getToppingRemoveRect(layout: PrepLayout, id: ToppingId): Rect {
   const tray = layout.trayRects[id];
+  if (layout.isCompact && tray.h >= MOBILE_MIN_TAP) {
+    const size = 32;
+    return {
+      x: tray.x + tray.w - size - 2,
+      y: tray.y + 2,
+      w: size,
+      h: size,
+    };
+  }
   const size = Math.min(28, Math.max(22, tray.w * 0.2));
   return {
     x: tray.x + tray.w - size - 5,
@@ -448,7 +626,7 @@ export function getToppingUndoRect(layout: PrepLayout): Rect {
   const centeredPrimaryX = layout.width * 0.5 - layout.primaryBtn.w * 0.5;
   if (layout.isCompact) {
     // On phones, keep undo in the left slot and the primary action in the right slot.
-    return { ...layout.secondaryBtn, y: layout.primaryBtn.y };
+    return { ...layout.secondaryBtn };
   }
   return {
     ...layout.secondaryBtn,

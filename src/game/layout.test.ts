@@ -113,9 +113,9 @@ test('very short portrait phones keep two topping rows above the action buttons'
 
 test('mobile canvas starts below the Mobile Hub reservation on portrait and landscape', () => {
   const cases = [
-    [280, 480, 136], [320, 480, 136], [320, 568, 170], [360, 740, 170],
-    [375, 667, 202], [390, 844, 202], [568, 320, 78], [667, 375, 78],
-    [844, 390, 78], [932, 430, 78],
+    [280, 480, 136], [320, 480, 136], [320, 568, 138], [360, 740, 138],
+    [375, 667, 146], [390, 844, 146], [568, 320, 74], [667, 375, 74],
+    [844, 390, 74], [932, 430, 74],
   ];
   for (const [width, height, expectedHubBase] of cases) {
     assert.equal(getMobileHubBaseHeight(width, height), expectedHubBase);

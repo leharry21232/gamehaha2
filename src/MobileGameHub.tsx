@@ -74,8 +74,8 @@ export function MobileGameHub({
   const showHeat = isPlaying && hud.phase === 'COOKING';
 
   return (
-    <div className="mobile-game-hub absolute left-0 right-0 top-0 z-20 px-2 pt-1 pointer-events-none">
-      <section className="mobile-game-hub__card safe-top-bar pointer-events-auto">
+    <div className="mobile-game-hub absolute left-0 right-0 top-0 z-20 px-1.5 pointer-events-none">
+      <section className="mobile-game-hub__card pointer-events-auto">
         <div className="mobile-game-hub__topline">
           <div className="mobile-game-hub__level">
             <span className="mobile-game-hub__level-label">⭐ CẤP {hud.playerLevel}</span>
