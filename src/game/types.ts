@@ -60,7 +60,7 @@ export interface NewspaperEvent {
   multipliers: Partial<Record<RawIngredientId, number>>;
 }
 
-export type VehicleLevel = 1 | 3 | 5;
+export type VehicleLevel = 1 | 2 | 3 | 5;
 
 export interface DailyBuffs {
   luckyCharm: boolean; // +10% tips for the day (Feng Shui Master)
