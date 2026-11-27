@@ -1716,6 +1716,17 @@ function renderCookingPhase(
         1
       );
     }
+    // Slightly shrink the order card in short landscape view so it takes up less of the play area.
+    const compactLandscape = layout.isCompact && layout.width > layout.height && layout.height <= 520;
+    if (compactLandscape) {
+      const bubble = layout.bubbleRect;
+      const centerX = bubble.x + bubble.w * 0.5;
+      const centerY = bubble.y + bubble.h * 0.5;
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.scale(0.9, 0.9);
+      ctx.translate(-centerX, -centerY);
+    }
     drawOrderBubble(
       ctx,
       state.order,
@@ -1724,6 +1735,7 @@ function renderCookingPhase(
       state.addedToppings,
       state.prepStep
     );
+    if (compactLandscape) ctx.restore();
   } else if (state.bocPhotTimer > 0) {
     // Bóc Phốt Mode empty counter card!
     const bpW = Math.min(540, w - 64);

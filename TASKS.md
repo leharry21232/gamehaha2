@@ -32,6 +32,8 @@
  
 - [x] Added an accessible close control to the NPC encounter card; the card can reappear for the next encounter.
 
+- [x] Reduced the order/customer card in short landscape view to prevent it dominating the narrow gameplay viewport.
+
 ## Previous completed work
 - [x] Per-ingredient topping removal and global undo.
 - [x] Tester Panel foundation, safe gameplay controls, inventory inspector, and read-only save export.
