@@ -1319,6 +1319,7 @@ function drawOrderBubble(
   ctx.fillText(`Chờ: ${Math.ceil(order.patience)}s`, b.x + b.w - padX, barY + 8);
 
   const compactOrderCard = layout.isCompact;
+  const compactLandscape = layout.isCompact && layout.width > layout.height;
   ctx.font = compactOrderCard
     ? '700 10px "Plus Jakarta Sans", sans-serif'
     : '700 15px "Plus Jakarta Sans", sans-serif';
@@ -1328,12 +1329,12 @@ function drawOrderBubble(
   const lines = wrapText(ctx, `"${order.dialogue}"`, innerW);
   let textY = barY + (compactOrderCard ? 22 : 26);
   const orderLineHeight = compactOrderCard ? 13 : 20;
-  for (let i = 0; i < Math.min(compactOrderCard ? 3 : 2, lines.length); i++) {
+  const maxDialogueLines = compactLandscape ? 1 : compactOrderCard ? 3 : 2;
+  for (let i = 0; i < Math.min(maxDialogueLines, lines.length); i++) {
     ctx.fillText(lines[i], b.x + padX, textY, innerW);
     textY += orderLineHeight;
   }
 
-  const compactLandscape = layout.isCompact && layout.width > layout.height;
   const checkY = b.y + b.h - (compactLandscape ? 44 : 34);
   ctx.strokeStyle = '#E2E8F0';
   ctx.lineWidth = 1.5;
