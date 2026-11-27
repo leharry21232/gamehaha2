@@ -19,6 +19,7 @@ export interface PrepLayout {
   width: number;
   mobileHubBottom: number;
   isCompact: boolean;
+  isHubLandscape: boolean;
   height: number;
   counterY: number;
   customerX: number;
@@ -233,6 +234,8 @@ export function computePrepLayout(w: number, h: number): PrepLayout {
   const width = Math.max(1, w);
   const height = Math.max(1, h);
   const isShortLandscape = height < width && height <= 520;
+  // The compact top hub overlays the game scene on medium-width landscape screens too.
+  const isHubLandscape = width > height && width <= 1100;
   const isTinyPortrait = width <= 320 && height <= 500 && !isShortLandscape;
   const isCompact = width < 680 || isShortLandscape;
   const mobileHubBottom = isCompact
@@ -258,8 +261,11 @@ export function computePrepLayout(w: number, h: number): PrepLayout {
   const bubbleW = isCompact
     ? Math.max(1, Math.min(width - bubbleX - 10 - insets.right, width * 0.72))
     : Math.max(220, Math.min(580, sceneLeft + maxSceneW - bubbleX - queueReserve));
-  const bubbleY = safeTop + 4;
-  const bubbleH = Math.max(76, counterY - bubbleY - 10);
+  const bubbleY = isHubLandscape ? Math.max(safeTop + 4, 116 + insets.top) : safeTop + 4;
+  const availableBubbleH = Math.max(76, counterY - bubbleY - 10);
+  const bubbleH = isHubLandscape
+    ? Math.min(availableBubbleH, Math.max(96, Math.min(190, height * 0.24)))
+    : availableBubbleH;
 
   const workTop = counterY + 14;
   const btnH = isCompact ? Math.max(42, Math.min(50, height * 0.07)) : 50;
@@ -546,6 +552,7 @@ export function computePrepLayout(w: number, h: number): PrepLayout {
       height,
       mobileHubBottom,
       isCompact,
+      isHubLandscape,
       counterY,
       customerX,
       customerY,
@@ -578,6 +585,7 @@ export function computePrepLayout(w: number, h: number): PrepLayout {
     height,
     mobileHubBottom,
     isCompact,
+    isHubLandscape,
     counterY,
     customerX,
     customerY,

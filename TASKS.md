@@ -36,6 +36,8 @@
 
 - [x] Fixed mobile landscape order-card footer collisions; topping labels wrap and seasoning is rendered on a separate line.
 
+- [x] Reserved the landscape hub overlay area and capped the order card height on medium-width landscape screens.
+
 ## Previous completed work
 - [x] Per-ingredient topping removal and global undo.
 - [x] Tester Panel foundation, safe gameplay controls, inventory inspector, and read-only save export.

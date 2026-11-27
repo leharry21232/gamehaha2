@@ -997,7 +997,7 @@ function drawOrderBubble(
 
   const padX = 16;
   const innerW = b.w - padX * 2;
-  if (layout.isCompact && order.dishType === 'CUON' && Boolean(layout.stepBarRect)) {
+  if ((layout.isCompact || layout.isHubLandscape) && order.dishType === 'CUON' && (Boolean(layout.stepBarRect) || layout.isHubLandscape)) {
     const cPadX = 10;
     const cInnerW = Math.max(40, b.w - cPadX * 2);
     const topY = b.y + 7;

@@ -102,6 +102,19 @@ test('desktop and short landscape layouts preserve exact pre-mobile behavior', (
   assert.ok(landscape.bowlCenterX < Math.min(...Object.values(landscape.trayRects).map((r) => r.x)));
 });
 
+test('medium landscape hub reserves its overlay area and keeps the order card compact', () => {
+  for (const [width, height] of [[957, 615], [1024, 768]] as Array<[number, number]>) {
+    const layout = computePrepLayout(width, height);
+    assert.equal(layout.isHubLandscape, true, `${width}x${height} uses hub-landscape layout`);
+    assert.ok(layout.bubbleRect.y >= 116, `order card starts below top hub at ${width}x${height}`);
+    assert.ok(layout.bubbleRect.h <= 190, `order card height is capped at 190px at ${width}x${height}`);
+    assertInsideViewport(layout.bubbleRect, width, height, `order card at ${width}x${height}`);
+  }
+
+  const desktop = computePrepLayout(1280, 800);
+  assert.equal(desktop.isHubLandscape, false, 'wide desktop layout remains unchanged');
+});
+
 test('buildCutGuides generates N-1 evenly spaced guides perpendicular to long edge', () => {
   const roll: Rect = { x: 45, y: 400, w: 300, h: 64 };
   assert.deepEqual(buildCutGuides(roll, 1), []);
