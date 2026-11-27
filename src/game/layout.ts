@@ -266,10 +266,11 @@ export function computePrepLayout(w: number, h: number): PrepLayout {
   const bubbleW = isCompact
     ? Math.max(1, Math.min(width - bubbleX - 10 - insets.right, width * 0.72))
     : Math.max(220, Math.min(580, sceneLeft + maxSceneW - bubbleX - queueReserve));
-  const bubbleY = safeTop + 4;
+  // Keep the white order card clearly separated from the fixed top hub.
+  const bubbleY = safeTop + (isHubLandscape ? 14 : 4);
   const availableBubbleH = Math.max(76, counterY - bubbleY - 10);
   const bubbleH = isHubLandscape
-    ? Math.min(availableBubbleH, height * 0.46)
+    ? Math.min(availableBubbleH, Math.max(88, height * 0.34))
     : availableBubbleH;
 
   const workTop = counterY + 14;

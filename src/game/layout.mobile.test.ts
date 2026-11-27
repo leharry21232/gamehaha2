@@ -106,8 +106,8 @@ test('scaled landscape canvas keeps the order card below the top hub', () => {
   for (const [width, height] of [[861, 327], [1722, 654]] as Array<[number, number]>) {
     const layout = computePrepLayout(width, height);
     assert.equal(layout.isHubLandscape, true, `${width}x${height} detects the wide hub layout`);
-    assert.ok(layout.bubbleRect.y >= height * 0.34, `order card starts below the hub at ${width}x${height}`);
-    assert.ok(layout.bubbleRect.h <= height * 0.46 + 1, `order card height fits the available landscape area at ${width}x${height}`);
+    assert.ok(layout.bubbleRect.y >= height * 0.34 + 14, `order card has a visible gap below the hub at ${width}x${height}`);
+    assert.ok(layout.bubbleRect.h <= Math.max(88, height * 0.34) + 1, `order card is reduced to fit below the hub at ${width}x${height}`);
     assert.ok(layout.bubbleRect.y + layout.bubbleRect.h < height, `order card stays inside viewport at ${width}x${height}`);
   }
 });
@@ -117,7 +117,7 @@ test('medium landscape hub reserves its overlay area and keeps the order card co
     const layout = computePrepLayout(width, height);
     assert.equal(layout.isHubLandscape, true, `${width}x${height} uses hub-landscape layout`);
     assert.ok(layout.bubbleRect.y >= 116, `order card starts below top hub at ${width}x${height}`);
-    assert.ok(layout.bubbleRect.h <= 190, `order card height is capped at 190px at ${width}x${height}`);
+    assert.ok(layout.bubbleRect.h <= Math.max(88, height * 0.34) + 1, `order card height is reduced at ${width}x${height}`);
     assertInsideViewport(layout.bubbleRect, width, height, `order card at ${width}x${height}`);
   }
 
