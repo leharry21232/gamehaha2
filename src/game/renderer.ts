@@ -1319,7 +1319,9 @@ function drawOrderBubble(
   ctx.fillText(`Chờ: ${Math.ceil(order.patience)}s`, b.x + b.w - padX, barY + 8);
 
   const compactOrderCard = layout.isCompact;
-  const compactLandscape = layout.isCompact && layout.width > layout.height;
+  // Use the wrapped landscape footer whenever the actual order card is narrow,
+  // including large landscape viewports where the game scene is letterboxed.
+  const compactLandscape = layout.width > layout.height && b.w < 850;
   ctx.font = compactOrderCard
     ? '700 10px "Plus Jakarta Sans", sans-serif'
     : '700 15px "Plus Jakarta Sans", sans-serif';
