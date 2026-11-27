@@ -233,18 +233,23 @@ export function computePrepLayout(w: number, h: number): PrepLayout {
   const insets = readSafeAreaInsets();
   const width = Math.max(1, w);
   const height = Math.max(1, h);
-  const isShortLandscape = height < width && height <= 520;
-  // The compact top hub overlays the game scene on medium-width landscape screens too.
-  const isHubLandscape = width > height && width <= 1100;
+  // Canvas dimensions can be device-pixel scaled, so detect the hub layout by aspect ratio,
+  // not a fixed CSS-pixel height/width threshold.
+  const isHubLandscape = width > height && width / height >= 2.1 && width <= 2400;
+  const isShortLandscape = height < width && (height <= 520 || isHubLandscape);
   const isTinyPortrait = width <= 320 && height <= 500 && !isShortLandscape;
   const isCompact = width < 680 || isShortLandscape;
-  const mobileHubBottom = isCompact
-    ? getMobileHubBaseHeight(width, height) + Math.max(8, insets.top) + 4
-    : 0;
+  const mobileHubBottom = isHubLandscape
+    ? height * 0.34 + insets.top
+    : isCompact
+      ? getMobileHubBaseHeight(width, height) + Math.max(8, insets.top) + 4
+      : 0;
   const safeTop = isCompact ? mobileHubBottom : Math.max(48, insets.top + 44);
   const safeBottom = Math.max(10, insets.bottom + 8);
-  const counterY = isShortLandscape
-    ? safeTop + 90
+  const counterY = isHubLandscape
+    ? Math.min(height - 24, height * 0.84)
+    : isShortLandscape
+      ? safeTop + 90
     : isCompact
       ? safeTop + 148
       : Math.max(safeTop + 150, Math.min(height * 0.38, 280));
@@ -261,10 +266,10 @@ export function computePrepLayout(w: number, h: number): PrepLayout {
   const bubbleW = isCompact
     ? Math.max(1, Math.min(width - bubbleX - 10 - insets.right, width * 0.72))
     : Math.max(220, Math.min(580, sceneLeft + maxSceneW - bubbleX - queueReserve));
-  const bubbleY = isHubLandscape ? Math.max(safeTop + 4, 116 + insets.top) : safeTop + 4;
+  const bubbleY = safeTop + 4;
   const availableBubbleH = Math.max(76, counterY - bubbleY - 10);
   const bubbleH = isHubLandscape
-    ? Math.min(availableBubbleH, Math.max(96, Math.min(190, height * 0.24)))
+    ? Math.min(availableBubbleH, height * 0.46)
     : availableBubbleH;
 
   const workTop = counterY + 14;

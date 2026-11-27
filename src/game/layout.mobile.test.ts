@@ -102,6 +102,16 @@ test('desktop and short landscape layouts preserve exact pre-mobile behavior', (
   assert.ok(landscape.bowlCenterX < Math.min(...Object.values(landscape.trayRects).map((r) => r.x)));
 });
 
+test('scaled landscape canvas keeps the order card below the top hub', () => {
+  for (const [width, height] of [[861, 327], [1722, 654]] as Array<[number, number]>) {
+    const layout = computePrepLayout(width, height);
+    assert.equal(layout.isHubLandscape, true, `${width}x${height} detects the wide hub layout`);
+    assert.ok(layout.bubbleRect.y >= height * 0.34, `order card starts below the hub at ${width}x${height}`);
+    assert.ok(layout.bubbleRect.h <= height * 0.46 + 1, `order card height fits the available landscape area at ${width}x${height}`);
+    assert.ok(layout.bubbleRect.y + layout.bubbleRect.h < height, `order card stays inside viewport at ${width}x${height}`);
+  }
+});
+
 test('medium landscape hub reserves its overlay area and keeps the order card compact', () => {
   for (const [width, height] of [[957, 615], [1024, 768]] as Array<[number, number]>) {
     const layout = computePrepLayout(width, height);

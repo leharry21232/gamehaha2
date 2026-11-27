@@ -1,3 +1,4 @@
+- Fixed high-DPI landscape detection: the order card now reserves the top hub's proportional overlay area and scales to the remaining viewport, including doubled canvas dimensions.
 - Fixed medium-width landscape gameplay so the order card starts below the top hub and uses a height-capped compact CUON layout.
 - Fixed overlapping order-card footer text in landscape mobile gameplay by wrapping topping/progress labels and placing seasoning on its own line.
 - Reduced the order/customer white card by 10% in short landscape gameplay so it occupies less screen area while keeping its contents and anchor aligned.
