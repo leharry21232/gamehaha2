@@ -1,3 +1,6 @@
+## Unreleased
+- Fixed the landscape order-card overlap at browser zoom levels by measuring the visible HTML game hub's actual bottom edge in CSS pixels and reserving that space in the canvas layout; retained a proportional fallback for tests and non-browser contexts.
+
 - Reduced the landscape order card to 34% of viewport height and added a 14px gap below the fixed top hub so its header no longer sits underneath the hub.
 - Fixed high-DPI landscape detection: the order card now reserves the top hub's proportional overlay area and scales to the remaining viewport, including doubled canvas dimensions.
 - Fixed medium-width landscape gameplay so the order card starts below the top hub and uses a height-capped compact CUON layout.

@@ -229,6 +229,27 @@ export function getMobileHubBaseHeight(w: number, h: number): number {
   return 146;
 }
 
+/** Resolve the canvas-safe top edge from the actual HTML hub overlay when available. */
+export function getReservedHubBottom(fallbackBottom: number, measuredBottom: number | null, gap = 8): number {
+  if (measuredBottom === null || !Number.isFinite(measuredBottom) || measuredBottom <= 0) {
+    return fallbackBottom;
+  }
+  return Math.max(fallbackBottom, measuredBottom + Math.max(0, gap));
+}
+
+function readVisibleGameHubBottom(): number | null {
+  if (typeof document === 'undefined') return null;
+  const overlays = document.querySelectorAll<HTMLElement>('[data-game-hud="true"], .mobile-game-hub');
+  let bottom = 0;
+  overlays.forEach((overlay) => {
+    const style = window.getComputedStyle(overlay);
+    if (style.display === 'none' || style.visibility === 'hidden') return;
+    const rect = overlay.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) bottom = Math.max(bottom, rect.bottom);
+  });
+  return bottom > 0 ? bottom : null;
+}
+
 export function computePrepLayout(w: number, h: number): PrepLayout {
   const insets = readSafeAreaInsets();
   const width = Math.max(1, w);
@@ -239,11 +260,16 @@ export function computePrepLayout(w: number, h: number): PrepLayout {
   const isShortLandscape = height < width && (height <= 520 || isHubLandscape);
   const isTinyPortrait = width <= 320 && height <= 500 && !isShortLandscape;
   const isCompact = width < 680 || isShortLandscape;
-  const mobileHubBottom = isHubLandscape
+  const estimatedMobileHubBottom = isHubLandscape
     ? height * 0.34 + insets.top
     : isCompact
       ? getMobileHubBaseHeight(width, height) + Math.max(8, insets.top) + 4
       : 0;
+  // The hub is HTML layered over the canvas. Its real CSS-pixel bottom is the
+  // source of truth; proportional estimates alone drift at browser zoom levels.
+  const mobileHubBottom = isCompact
+    ? getReservedHubBottom(estimatedMobileHubBottom, readVisibleGameHubBottom(), 8)
+    : 0;
   const safeTop = isCompact ? mobileHubBottom : Math.max(48, insets.top + 44);
   const safeBottom = Math.max(10, insets.bottom + 8);
   const counterY = isHubLandscape

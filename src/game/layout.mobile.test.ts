@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildCutGuides, findSnapCutGuide } from './cutGuides';
-import { computePrepLayout, getToppingUndoRect, type Rect } from './layout';
+import { computePrepLayout, getReservedHubBottom, getToppingUndoRect, type Rect } from './layout';
 
 const TARGET_PHONE_PORTRAITS: Array<[number, number]> = [
   [360, 640],
@@ -162,4 +162,12 @@ test('findSnapCutGuide snaps nearest uncut guide within radius and skips complet
   // Far away from any uncut guide (> 36px)
   const far = findSnapCutGuide({ x: 46, y: 432 }, null, guides, mask, 36);
   assert.equal(far, null);
+});
+
+
+test('measured HTML hub edge takes precedence over an underestimated canvas reservation', () => {
+  assert.equal(getReservedHubBottom(74, 126, 8), 134);
+  assert.equal(getReservedHubBottom(162, 126, 8), 162);
+  assert.equal(getReservedHubBottom(74, null, 8), 74);
+  assert.equal(getReservedHubBottom(74, Number.NaN, 8), 74);
 });

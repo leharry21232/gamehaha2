@@ -208,3 +208,5 @@
 - [ ] Confirm movement remains smooth when moving diagonally and sliding against obstacles on a real mobile device.
 
 - [x] Map 1 cooking screen: portrait order card typography, compact four-step progress labels, touch-specific cutting instruction, and mobile HUD action wrapping.
+
+- [x] Use the live HTML hub bounding box as the source of truth for the canvas order-card safe area, with a tested fallback for non-browser layout tests.
