@@ -1,3 +1,4 @@
+- Added a close (X) control to the in-game NPC encounter card; dismissing it only hides the card for the current encounter and does not cancel the NPC interaction or its active choice.
 # Changelog
 
 ## Unreleased

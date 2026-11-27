@@ -30,6 +30,8 @@
 
 **Roadmap note:** This M4.x neighborhood slice is an approved extension. Official Spec Kit M5 remains decoration, skins, difficulty, and audio.
  
+- [x] Added an accessible close control to the NPC encounter card; the card can reappear for the next encounter.
+
 ## Previous completed work
 - [x] Per-ingredient topping removal and global undo.
 - [x] Tester Panel foundation, safe gameplay controls, inventory inspector, and read-only save export.
