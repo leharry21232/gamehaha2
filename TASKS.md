@@ -210,3 +210,5 @@
 - [x] Map 1 cooking screen: portrait order card typography, compact four-step progress labels, touch-specific cutting instruction, and mobile HUD action wrapping.
 
 - [x] Use the live HTML hub bounding box as the source of truth for the canvas order-card safe area, with a tested fallback for non-browser layout tests.
+
+- [x] Apply the measured top HUD safe area to desktop and mobile canvas layouts, using canvas-relative CSS coordinates so the order dialogue is not hidden behind the HTML overlay.

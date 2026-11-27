@@ -234,18 +234,24 @@ export function getReservedHubBottom(fallbackBottom: number, measuredBottom: num
   if (measuredBottom === null || !Number.isFinite(measuredBottom) || measuredBottom <= 0) {
     return fallbackBottom;
   }
-  return Math.max(fallbackBottom, measuredBottom + Math.max(0, gap));
+  // A live DOM measurement is authoritative; the proportional value is only a fallback.
+  return measuredBottom + Math.max(0, gap);
 }
 
 function readVisibleGameHubBottom(): number | null {
   if (typeof document === 'undefined') return null;
+  const canvas = document.querySelector('canvas');
+  const canvasTop = canvas?.getBoundingClientRect().top ?? 0;
   const overlays = document.querySelectorAll<HTMLElement>('[data-game-hud="true"], .mobile-game-hub');
   let bottom = 0;
   overlays.forEach((overlay) => {
     const style = window.getComputedStyle(overlay);
     if (style.display === 'none' || style.visibility === 'hidden') return;
     const rect = overlay.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) bottom = Math.max(bottom, rect.bottom);
+    if (rect.width > 0 && rect.height > 0) {
+      // Canvas layout uses CSS pixels relative to its own top-left, not viewport coordinates.
+      bottom = Math.max(bottom, rect.bottom - canvasTop);
+    }
   });
   return bottom > 0 ? bottom : null;
 }
@@ -267,10 +273,12 @@ export function computePrepLayout(w: number, h: number): PrepLayout {
       : 0;
   // The hub is HTML layered over the canvas. Its real CSS-pixel bottom is the
   // source of truth; proportional estimates alone drift at browser zoom levels.
-  const mobileHubBottom = isCompact
-    ? getReservedHubBottom(estimatedMobileHubBottom, readVisibleGameHubBottom(), 8)
-    : 0;
-  const safeTop = isCompact ? mobileHubBottom : Math.max(48, insets.top + 44);
+  const measuredHubBottom = readVisibleGameHubBottom();
+  const fallbackHubBottom = isCompact ? estimatedMobileHubBottom : Math.max(48, insets.top + 44);
+  // Apply the actual top HUD reservation to desktop and mobile alike. The HUD
+  // is an HTML overlay above the canvas, regardless of which responsive hub is active.
+  const safeTop = getReservedHubBottom(fallbackHubBottom, measuredHubBottom, 12);
+  const mobileHubBottom = isCompact ? safeTop : 0;
   const safeBottom = Math.max(10, insets.bottom + 8);
   const counterY = isHubLandscape
     ? Math.min(height - 24, height * 0.84)

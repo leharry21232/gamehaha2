@@ -1,4 +1,7 @@
 ## Unreleased
+- Fixed the order dialogue being hidden under the desktop top HUD at 100% browser zoom. The canvas now reserves the live HUD bottom edge in canvas-relative CSS pixels on desktop and mobile; proportional sizing is fallback-only.
+
+## Unreleased
 - Fixed the landscape order-card overlap at browser zoom levels by measuring the visible HTML game hub's actual bottom edge in CSS pixels and reserving that space in the canvas layout; retained a proportional fallback for tests and non-browser contexts.
 
 - Reduced the landscape order card to 34% of viewport height and added a 14px gap below the fixed top hub so its header no longer sits underneath the hub.

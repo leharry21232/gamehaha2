@@ -167,7 +167,12 @@ test('findSnapCutGuide snaps nearest uncut guide within radius and skips complet
 
 test('measured HTML hub edge takes precedence over an underestimated canvas reservation', () => {
   assert.equal(getReservedHubBottom(74, 126, 8), 134);
-  assert.equal(getReservedHubBottom(162, 126, 8), 162);
+  assert.equal(getReservedHubBottom(162, 126, 8), 134);
   assert.equal(getReservedHubBottom(74, null, 8), 74);
   assert.equal(getReservedHubBottom(74, Number.NaN, 8), 74);
+});
+
+
+test('live hub measurement is authoritative over a larger proportional fallback', () => {
+  assert.equal(getReservedHubBottom(190, 127, 12), 139);
 });
