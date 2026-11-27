@@ -1333,51 +1333,94 @@ function drawOrderBubble(
     textY += orderLineHeight;
   }
 
-  const checkY = b.y + b.h - 34;
+  const compactLandscape = layout.isCompact && layout.width > layout.height;
+  const checkY = b.y + b.h - (compactLandscape ? 44 : 34);
   ctx.strokeStyle = '#E2E8F0';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(b.x + padX, checkY - 8);
-  ctx.lineTo(b.x + b.w - padX, checkY - 8);
+  ctx.moveTo(b.x + padX, checkY - 5);
+  ctx.lineTo(b.x + b.w - padX, checkY - 5);
   ctx.stroke();
 
-  let cx = b.x + padX;
-  ctx.font = compactOrderCard
-    ? '700 8px "Plus Jakarta Sans", sans-serif'
-    : '700 13px "Plus Jakarta Sans", sans-serif';
-  ctx.textBaseline = 'middle';
-
   const sliceDone = order.targetSlices === 0 || cutCount === order.targetSlices;
-  ctx.fillStyle = prepStep === 'CUTTING' ? '#D97706' : sliceDone ? '#059669' : '#334155';
   const sliceText =
     order.targetSlices === 0 ? 'Low-Carb (Không bánh)' : `Cắt ${cutCount}/${order.targetSlices} khúc`;
-  ctx.fillText(sliceText, cx, checkY + 8);
-  cx += ctx.measureText(sliceText).width + 12;
-
   const reqEntries = (Object.keys(order.requiredToppings) as ToppingId[]).filter(
     (k) => order.requiredToppings[k] > 0
   );
-  for (const tid of reqEntries) {
-    const need = order.requiredToppings[tid];
-    const got = addedToppings[tid] || 0;
-    const def = TOPPING_MAP[tid];
-    const done = got === need;
-    const over = got > need;
-    ctx.fillStyle = over ? '#E11D48' : done ? '#059669' : '#334155';
-    const label = `${def.shortName} ${got}/${need}`;
-    if (cx + ctx.measureText(label).width < b.x + b.w - 135) {
-      ctx.fillText(`· ${label}`, cx, checkY + 8);
-      cx += ctx.measureText(`· ${label}`).width + 8;
-    }
-  }
 
-  ctx.textAlign = 'right';
-  ctx.fillStyle = '#0F172A';
-  ctx.fillText(
-    `Chanh: ${SEASONING_LABEL[order.limeTarget]} · Sa tế: ${SEASONING_LABEL[order.chiliTarget]}`,
-    b.x + b.w - padX,
-    checkY + 8
-  );
+  if (compactLandscape) {
+    // Landscape footer uses two independent rows: progress/toppings, then seasoning.
+    // Never right-align the seasoning text against the same row as the topping labels.
+    ctx.font = '700 8px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    let rowX = b.x + padX;
+    let rowY = checkY + 6;
+    const maxX = b.x + b.w - padX;
+    const rowGap = 10;
+    const items = [
+      { text: sliceText, color: prepStep === 'CUTTING' ? '#D97706' : sliceDone ? '#059669' : '#334155' },
+      ...reqEntries.map((tid) => {
+        const need = order.requiredToppings[tid];
+        const got = addedToppings[tid] || 0;
+        return {
+          text: `· ${TOPPING_MAP[tid].shortName} ${got}/${need}`,
+          color: got > need ? '#E11D48' : got === need ? '#059669' : '#334155',
+        };
+      }),
+    ];
+    for (const item of items) {
+      const itemW = ctx.measureText(item.text).width + 8;
+      if (rowX > b.x + padX && rowX + itemW > maxX) {
+        rowX = b.x + padX;
+        rowY += rowGap;
+      }
+      ctx.fillStyle = item.color;
+      ctx.fillText(item.text, rowX, rowY);
+      rowX += itemW;
+    }
+
+    ctx.fillStyle = '#0F172A';
+    ctx.textAlign = 'left';
+    ctx.fillText(
+      `Chanh: ${SEASONING_LABEL[order.limeTarget]} · Sa tế: ${SEASONING_LABEL[order.chiliTarget]}`,
+      b.x + padX,
+      b.y + b.h - 8,
+      innerW
+    );
+  } else {
+    let cx = b.x + padX;
+    ctx.font = compactOrderCard
+      ? '700 8px "Plus Jakarta Sans", sans-serif'
+      : '700 13px "Plus Jakarta Sans", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = prepStep === 'CUTTING' ? '#D97706' : sliceDone ? '#059669' : '#334155';
+    ctx.fillText(sliceText, cx, checkY + 8);
+    cx += ctx.measureText(sliceText).width + 12;
+
+    for (const tid of reqEntries) {
+      const need = order.requiredToppings[tid];
+      const got = addedToppings[tid] || 0;
+      const def = TOPPING_MAP[tid];
+      const done = got === need;
+      const over = got > need;
+      ctx.fillStyle = over ? '#E11D48' : done ? '#059669' : '#334155';
+      const label = `${def.shortName} ${got}/${need}`;
+      if (cx + ctx.measureText(label).width < b.x + b.w - 135) {
+        ctx.fillText(`· ${label}`, cx, checkY + 8);
+        cx += ctx.measureText(`· ${label}`).width + 8;
+      }
+    }
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#0F172A';
+    ctx.fillText(
+      `Chanh: ${SEASONING_LABEL[order.limeTarget]} · Sa tế: ${SEASONING_LABEL[order.chiliTarget]}`,
+      b.x + b.w - padX,
+      checkY + 8
+    );
+  }
 }
 
 function drawRicePaperSlice(ctx: CanvasRenderingContext2D, slice: PolygonSlice, isRoll = false): void {

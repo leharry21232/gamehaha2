@@ -1,3 +1,4 @@
+- Fixed overlapping order-card footer text in landscape mobile gameplay by wrapping topping/progress labels and placing seasoning on its own line.
 - Reduced the order/customer white card by 10% in short landscape gameplay so it occupies less screen area while keeping its contents and anchor aligned.
 - Added a close (X) control to the in-game NPC encounter card; dismissing it only hides the card for the current encounter and does not cancel the NPC interaction or its active choice.
 # Changelog

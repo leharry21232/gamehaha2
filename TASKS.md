@@ -34,6 +34,8 @@
 
 - [x] Reduced the order/customer card in short landscape view to prevent it dominating the narrow gameplay viewport.
 
+- [x] Fixed mobile landscape order-card footer collisions; topping labels wrap and seasoning is rendered on a separate line.
+
 ## Previous completed work
 - [x] Per-ingredient topping removal and global undo.
 - [x] Tester Panel foundation, safe gameplay controls, inventory inspector, and read-only save export.
